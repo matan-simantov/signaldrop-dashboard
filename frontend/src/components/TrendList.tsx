@@ -1,6 +1,6 @@
 import { ChevronRight } from 'lucide-react';
 import type { Trend, AiLabels } from '../types';
-import { resolveLabel } from '../lib/labels';
+import { resolveTrendLabel } from '../lib/labels';
 
 interface Props {
   trends: Trend[];
@@ -45,8 +45,9 @@ export function TrendList({ trends, aiLabels, onSelect, selectedTopic }: Props) 
       </div>
       <ol className="divide-y divide-slate-200 dark:divide-slate-700">
         {trends.map((t, idx) => {
-          const ai = aiLabels[t.topic];
-          const label = resolveLabel(t.topic, aiLabels);
+          const ai = aiLabels[t.topic] || (t.representative_topic ? aiLabels[t.representative_topic] : undefined);
+          const label = resolveTrendLabel(t, aiLabels);
+          const signal = t.representative_topic || t.topic;
           const declinePct = Math.round(t.decline_percentage * 100);
           const isSelected = t.topic === selectedTopic;
           return (
@@ -78,7 +79,7 @@ export function TrendList({ trends, aiLabels, onSelect, selectedTopic }: Props) 
                   </div>
                   <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                     Sep {(t.sep_share * 100).toFixed(2)}% → Dec {(t.dec_share * 100).toFixed(2)}%
-                    <span className="text-slate-400 dark:text-slate-500"> · keyword: {t.topic}</span>
+                    <span className="text-slate-400 dark:text-slate-500"> · signal: {signal}</span>
                   </div>
                 </div>
                 <div className="shrink-0 w-28 hidden sm:block">

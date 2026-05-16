@@ -13,8 +13,10 @@ const PIPELINE_STEPS = [
   'Extract keyword n-grams from translated post text.',
   'Calculate each topic’s monthly conversation share (mentions ÷ total posts in month).',
   'Rank topics by normalized September-to-December decline, weighted by topic significance.',
+  'Consolidate duplicate lexical signals only when post-level overlap is strong and reciprocal.',
+  'Prefer displayable topic-like groups in the main list while keeping generic signals in artifacts.',
   'Filter out repeated alert templates and boilerplate UI text.',
-  'Use AI only for human-readable labels and explanations — never for ranking.',
+  'Use AI only for readable labels and summaries — never for ranking, grouping, counts, shares, or decline metrics.',
 ];
 
 const THRESHOLD_LABELS: Record<string, { name: string; format: (v: number) => string }> = {
@@ -103,7 +105,8 @@ export function MethodologyCard({ data }: Props) {
           <div className="rounded-lg p-3 bg-slate-50 border border-slate-200 text-xs text-slate-600 dark:bg-slate-900/40 dark:border-slate-700 dark:text-slate-300 leading-relaxed">
             Topics whose normalized share <em>increased</em> from September to December are
             excluded from this ranking. This assignment focuses on{' '}
-            <strong>declining</strong> conversation trends.
+            <strong>declining</strong> conversation trends. Consolidated group metrics use unique
+            post IDs, so duplicate member signals do not double count the same post.
           </div>
           {data.limitations?.length > 0 && (
             <div>

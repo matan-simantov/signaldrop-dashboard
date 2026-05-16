@@ -12,6 +12,61 @@
 
 **Ranking by decline weighted by significance**: `ranking_score = absolute_delta × decline_percentage`. Pure decline percentage over-ranks tiny topics that vanish; pure absolute delta over-ranks high-volume topics with minor shifts. The product balances both dimensions.
 
+**Deterministic topic consolidation**: First-pass n-grams are treated as lexical signals, not final human topics. The pipeline then consolidates duplicate signals using post-level overlap across a bounded candidate pool. Metrics for consolidated groups are recomputed from unique post IDs, so a post that mentions multiple member signals is counted once.
+
+**AI as presentation only**: Anthropic is optional and local-only. It can generate readable labels, explanations, and Key Findings summaries from deterministic artifacts. It never calculates rankings, counts, shares, decline metrics, or topic groups.
+
+### Data Flow
+
+```
+Raw CSV posts
+  → source loader maps rows to NormalizedPost
+  → SQLite in-memory posts table
+  → clean/tokenize translated text
+  → extract unigram + bigram lexical signals
+  → compute normalized monthly shares
+  → rank deterministic declining signals
+  → consolidate duplicate signals using reciprocal post-level overlap
+  → mark generic or duplicate-looking signals for display quality
+  → write JSON artifacts
+  → optional AI labels and AI summaries for readability
+  → FastAPI serves precomputed artifacts
+  → React dashboard visualizes consolidated trends
+```
+
+### Topic Consolidation
+
+The consolidation layer exists because lexical n-grams can split one human topic into several signals, such as `kirk`, `charlie`, and `charlie kirk`.
+
+The implementation is intentionally conservative:
+- It considers only a bounded pool of top declining raw signals, default 200.
+- It builds temporary `topic -> month -> post_id set` indexes by rescanning SQLite posts.
+- It compares only plausible pairs: substring relationships, reversed bigrams, same normalized words, shared compound unigrams, or same existing AI short label.
+- Lexical similarity is never enough. A merge requires deterministic overlap evidence.
+- New group members must validate against the group representative, avoiding chain merges where A matches B and B matches C but A does not really match C.
+
+The merge evidence includes:
+- Jaccard overlap
+- Directional coverage from topic A to topic B
+- Directional coverage from topic B to topic A
+- Monthly pattern similarity
+
+Broad/narrow pairs have stricter thresholds. For example, `gaza city` may mostly appear inside `gaza`, but most `gaza` posts may not be about `gaza city`. That one-directional containment is not enough; the pair must have strong reciprocal coverage and comparable post volumes.
+
+The final `consolidated_trends.json` artifact stores only final groups and compact evidence summaries. It does not store large post ID sets.
+
+### Display Quality Pass
+
+The analytical artifact remains complete, but the dashboard should not over-emphasize generic fragments when clearer topic-like groups are available. A deterministic display-quality pass marks groups with:
+- `display_quality_score`
+- `is_displayable`
+- `display_exclusion_reason`
+- `quality_notes`
+
+This pass is display-only. It does not change trend ranking, grouping, counts, shares, or stored artifacts. It conservatively hides weak standalone terms such as `city`, `september`, `platforms`, `speech`, and partial phrase fragments such as `rosh` from the main list while leaving them available through the API and artifact.
+
+The rule intentionally avoids treating all unigrams as generic. Clear topics such as `hostages`, `qatar`, `gaza`, `hamas`, `houthi`, `trump`, and `kirk` remain displayable.
+
 ### Current Scale Profile
 
 - **Data**: ~700K rows, 366 channels, 4 months
@@ -29,17 +84,17 @@
 | Concern | Current | At 10M |
 |---------|---------|--------|
 | Data storage | Local CSV | S3 partitioned by month |
-| Preprocessing | Single Python process, SQLite in-memory | Batch job, DuckDB or partitioned Parquet |
+| Preprocessing | Single Python process, SQLite in-memory | Batch job, DuckDB/Polars or partitioned Parquet |
 | Memory | Fits in RAM | Streaming/chunked processing |
 | Scheduling | Manual local run | AWS Batch or Step Functions |
 
 ### Approach
 
 1. **Partition raw data** by month in S3 (`raw/2025-09/`, `raw/2025-10/`, etc.)
-2. **Replace SQLite with DuckDB** — same SQL interface but handles larger-than-memory datasets via disk spilling and columnar format
-3. **Process in chunks**: read one month at a time, aggregate n-gram counts per month, then merge
-4. **Pre-aggregate** into Parquet intermediate files before final trend scoring
-5. **Output remains the same**: small JSON artifacts for the API
+2. **Replace SQLite with DuckDB or Polars** — both handle larger-than-memory or columnar workflows better than in-memory SQLite
+3. **Process in chunks**: read one month at a time, aggregate n-gram counts and candidate post sets, then merge
+4. **Pre-aggregate** into Parquet intermediate files before final trend scoring and consolidation
+5. **Output remains the same**: small JSON artifacts for the API, including `consolidated_trends.json`
 
 The API and frontend stay identical — only the preprocessing step changes.
 
@@ -61,10 +116,11 @@ The API and frontend stay identical — only the preprocessing step changes.
 ### Approach
 
 1. **S3 + Parquet + Glue Data Catalog**: Raw data stored as partitioned Parquet files. Glue crawlers maintain the schema catalog.
-2. **AWS Glue ETL or EMR Spark**: Distributed n-gram extraction and aggregation. Spark handles the parallelism across partitions.
-3. **Materialized aggregate tables**: Write pre-aggregated results to a fast-read store (DynamoDB or S3 JSON).
-4. **Scheduled batch jobs**: Process runs nightly or on new data arrival via S3 events → Step Functions.
-5. **API unchanged**: Still serves precomputed results. No query-time computation.
+2. **AWS Glue ETL or EMR Spark**: Distributed n-gram extraction, aggregation, and candidate post-overlap calculation. Spark handles the parallelism across partitions.
+3. **Athena for ad-hoc validation** and materialized aggregate tables for repeatable outputs.
+4. **Materialized artifacts**: Write final precomputed results to S3 JSON for the API.
+5. **Scheduled batch jobs**: Process runs nightly or on new data arrival via S3 events → Step Functions.
+6. **API unchanged**: Still serves precomputed results. No query-time computation.
 
 ### Cost Considerations
 
@@ -98,6 +154,7 @@ Each source has a dedicated loader that implements `BaseLoader.load() → Iterat
 - Text cleaning
 - N-gram extraction
 - Trend scoring
+- Deterministic consolidation, as long as the loader supplies stable post IDs
 - Artifact generation
 - Backend API
 - Frontend dashboard
@@ -112,8 +169,9 @@ The architecture separates:
 1. **Data ingestion** (loaders)
 2. **Feature extraction** (n-grams, could add sentiment, entities, etc.)
 3. **Scoring** (trend detection, could add anomaly detection, correlation, etc.)
-4. **Artifact generation** (JSON structure for the frontend)
-5. **Presentation** (React components)
+4. **Consolidation** (post-overlap grouping, could add semantic grouping later)
+5. **Artifact generation** (JSON structure for the frontend)
+6. **Presentation** (React components)
 
 To add a new infographic (e.g., "emerging trends" or "sentiment shifts"):
 1. Add a new scoring service alongside `trend_scoring.py`
@@ -141,6 +199,7 @@ The pipeline's modularity means new infographic types don't require rewriting ex
 | Decision | Tradeoff |
 |----------|----------|
 | N-grams over embeddings | Explainable and fast, but misses semantic similarity |
+| Conservative post-overlap consolidation | Reduces duplicates, but intentionally leaves uncertain near-duplicates separate |
 | Precomputed artifacts | Instant API responses, but requires re-running pipeline for updates |
 | SQLite in-memory | Simple and fast for current scale, won't work for 10M+ rows |
 | Single-process Python | No infrastructure dependencies, but limited to single-machine performance |
@@ -160,4 +219,4 @@ Embeddings would add value for semantic grouping (merging "ceasefire" with "truc
 - Reduced explainability
 - Risk to the core deliverable
 
-The correct extension path: build deterministic MVP first, then optionally add an LLM labeling layer that generates human-readable descriptions for the top trends using the already-identified keywords and representative posts as context.
+The current grouping path is deliberately deterministic and explainable. A future semantic grouping layer could use embeddings or BERTopic to catch aliases like "ceasefire" and "truce", but that should be added behind the same artifact contract and validated against deterministic metrics. The LLM layer should remain presentation-only: labels and summaries from already-identified trend outputs, not ranking or grouping.

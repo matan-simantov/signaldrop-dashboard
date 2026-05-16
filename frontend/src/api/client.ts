@@ -1,4 +1,4 @@
-import type { Overview, Trend, TrendDetail, Methodology, AiLabels } from '../types';
+import type { Overview, Trend, TrendDetail, Methodology, AiLabels, AiInsights } from '../types';
 
 // In local dev, '/api' is proxied to the backend by Vite (see vite.config.ts).
 // In production builds, set VITE_API_BASE_URL to the deployed backend URL + /api,
@@ -17,4 +17,5 @@ export const api = {
   getTrendDetail: (topic: string) => fetchJson<TrendDetail>(`/trends/${encodeURIComponent(topic)}`),
   getMethodology: () => fetchJson<Methodology>('/methodology'),
   getAiLabels: () => fetchJson<AiLabels>('/ai-labels'),
+  getAiInsights: () => fetchJson<AiInsights>('/ai-insights'),
 };

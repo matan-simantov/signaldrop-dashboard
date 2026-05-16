@@ -1,5 +1,5 @@
 import type { Trend, AiLabels } from '../types';
-import { resolveLabel } from './labels';
+import { resolveTrendLabel } from './labels';
 
 export interface Insight {
   title: string;
@@ -26,7 +26,7 @@ export function deriveKeyFindings(trends: Trend[], aiLabels: AiLabels): Insight[
     title: 'Sharpest relative decline',
     value: `${Math.round(sharpest.decline_percentage * 100)}%`,
     detail:
-      `${resolveLabel(sharpest.topic, aiLabels)} nearly disappeared by December, ` +
+      `${resolveTrendLabel(sharpest, aiLabels)} nearly disappeared by December, ` +
       `dropping from ${(sharpest.sep_share * 100).toFixed(2)}% to ` +
       `${(sharpest.dec_share * 100).toFixed(2)}% of monthly conversation. ` +
       `This is the sharpest relative drop in the ranking — not necessarily the most central topic overall.`,
@@ -37,7 +37,7 @@ export function deriveKeyFindings(trends: Trend[], aiLabels: AiLabels): Insight[
   const mostDiscussed = [...trends].sort((a, b) => b.sep_mentions - a.sep_mentions)[0];
   findings.push({
     title: 'Highest September volume',
-    value: resolveLabel(mostDiscussed.topic, aiLabels),
+    value: resolveTrendLabel(mostDiscussed, aiLabels),
     detail:
       `Raw mentions fell from ${mostDiscussed.sep_mentions.toLocaleString()} to ` +
       `${mostDiscussed.dec_mentions.toLocaleString()}, while normalized share declined ` +
@@ -55,7 +55,7 @@ export function deriveKeyFindings(trends: Trend[], aiLabels: AiLabels): Insight[
     title: 'Largest share-of-voice drop',
     value: `−${pts} percentage points`,
     detail:
-      `${resolveLabel(largestShareDrop.topic, aiLabels)} lost ${pts} percentage points ` +
+      `${resolveTrendLabel(largestShareDrop, aiLabels)} lost ${pts} percentage points ` +
       `of monthly conversation share between September and December — the largest absolute drop ` +
       `among ranked topics.`,
   });

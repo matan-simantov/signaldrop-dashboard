@@ -54,7 +54,10 @@ export function VolumeChart({ volumes }: Props) {
                 color: 'rgb(15 23 42)',
                 fontSize: 12,
               }}
-              formatter={((value: number) => [value.toLocaleString(), 'Posts']) as any}
+              formatter={value => [
+                typeof value === 'number' ? value.toLocaleString() : value,
+                'Posts',
+              ]}
             />
             <Bar dataKey="posts" fill="#4f46e5" radius={[4, 4, 0, 0]} />
           </BarChart>

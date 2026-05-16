@@ -11,7 +11,7 @@ export function OverviewCards({ data }: Props) {
     { label: 'Channels', value: data.channels.toLocaleString(), icon: Radio },
     { label: 'Date Range', value: 'Sep–Dec 2025', icon: Calendar },
     {
-      label: 'Declining Topic Signals',
+      label: 'Raw Declining Signals',
       value: data.declining_trends_found.toLocaleString(),
       icon: TrendingDown,
     },

@@ -7,11 +7,14 @@ Analyzes ~700K posts from 366 channels (Sep–Dec 2025) and surfaces topics whos
 ## Architecture Overview
 
 ```
-CSV → Local Python Preprocessing → SQLite In-Memory → Trend Detection → JSON Artifacts
-                                                                              ↓
-                                                         FastAPI Backend ← reads artifacts
-                                                                              ↓
-                                                         React Dashboard ← consumes API
+CSV → Local Python Preprocessing → SQLite In-Memory
+  → lexical topic signals → normalized trend scoring
+  → deterministic post-overlap consolidation
+  → deterministic display-quality flags → JSON Artifacts
+                                                        ↓
+                                   FastAPI Backend ← reads artifacts
+                                                        ↓
+                                   React Dashboard ← consumes API
 ```
 
 The key design principle: **preprocessing is offline, the live API is fast**. The backend never touches the raw CSV — it serves precomputed JSON artifacts.
@@ -34,7 +37,8 @@ pip install -r data_processing/requirements.txt
 python -m data_processing.scripts.ingest_and_compute \
   --csv ~/Downloads/telegram.csv \
   --output ./artifacts \
-  --top-n 30
+  --top-n 30 \
+  --consolidation-candidates 200
 ```
 
 Produces JSON artifacts in `./artifacts/`.
@@ -61,6 +65,8 @@ npm run dev
 
 Open http://localhost:5173 — Vite proxies `/api` to `localhost:8000`.
 
+The initial view is a generic SignalDrop home screen with dataset cards. Click **Public Telegram Channels Dataset** to open the Telegram analysis workspace; use **← Back to datasets** in the top of the dashboard to return. Future data sources (Facebook, other public text sources) appear as disabled cards and will be enabled when their loaders ship.
+
 ### Or just use the Makefile
 
 ```bash
@@ -69,11 +75,12 @@ make preprocess CSV=~/Downloads/telegram.csv
 make backend          # in one terminal
 make frontend         # in another
 make ai-labels        # optional
+make ai-insights      # optional, run after ai-labels for best wording
 ```
 
-## Optional: AI Labeling (local-only)
+## Optional: AI Labeling and Key Findings (local-only)
 
-If you have an Anthropic API key, you can enrich the top trends with human-readable labels, categories, and one-line explanations. The app works fully without it.
+If you have an Anthropic API key, you can enrich the consolidated trends with human-readable labels, categories, one-line explanations, and a short Key Findings summary. The app works fully without it.
 
 **Where the API key goes:**
 - Put it in a local `.env` file at the repo root.
@@ -91,11 +98,13 @@ Run AI labeling:
 # Option A — load .env into the shell, then run make
 set -a && source .env && set +a
 make ai-labels
+make ai-insights
 
 # Option B — export the variables inline
 export ANTHROPIC_API_KEY="sk-ant-..."
 export ANTHROPIC_MODEL="claude-sonnet-4-6"
 make ai-labels
+make ai-insights
 ```
 
 **Model selection:**
@@ -104,20 +113,23 @@ make ai-labels
 
 **Output:**
 - The script writes `artifacts/ai_labels.json`.
-- `artifacts/` is gitignored — do **not** commit `ai_labels.json`.
+- The insights script writes `artifacts/ai_insights.json`.
+- `artifacts/` is gitignored — do **not** commit `ai_labels.json` or `ai_insights.json`.
 - You can upload it to S3 alongside the other artifacts:
   ```
   s3://signaldrop-data-matan-2026/processed/ai_labels.json
+  s3://signaldrop-data-matan-2026/processed/ai_insights.json
   ```
 
 **Behavior:**
-- The backend serves `ai_labels.json` via `GET /api/ai-labels`. The frontend uses AI labels in the chart and detail panel; trends without labels fall back to the keyword.
+- The backend serves `ai_labels.json` via `GET /api/ai-labels`. The frontend uses AI labels in the Top Trends list and detail panel; trends without labels fall back to the underlying signal.
+- The backend serves `ai_insights.json` via `GET /api/ai-insights`. The frontend uses it for Key Findings when present and falls back to deterministic findings when absent.
 - If `ANTHROPIC_API_KEY` is unset or empty, `make ai-labels` prints a skip message and exits cleanly.
 
 **Important:**
 - The API key is read from the **server-side environment** during preprocessing. It is **never** bundled into the frontend.
 - Anthropic is called **only** during this optional preprocessing step. The live backend and frontend never call the LLM.
-- Deterministic scoring remains the source of truth — AI is presentation only.
+- Deterministic scoring and deterministic consolidation remain the source of truth. AI is presentation only: it does not calculate rankings, counts, shares, decline metrics, or topic groups.
 
 ## Trend Detection Methodology
 
@@ -139,6 +151,30 @@ ranking_score      = absolute_delta × decline_percentage
 Pure `decline_percentage` alone would put every topic that went from 50 → 0 mentions ahead of every topic that went from 30K → 5K. Weighting by `absolute_delta` (which scales with September share) ensures real-volume topics rank ahead of negligible ones that vanish.
 
 The dashboard surfaces all underlying numbers per trend: September mentions, December mentions, September share, December share, decline percentage, and ranking score.
+
+### Topic Consolidation
+
+First-pass topics are lexical n-gram signals. This is explainable, but it can produce duplicates such as `kirk`, `charlie`, and `charlie kirk`.
+
+After raw declining signals are ranked, SignalDrop considers only a bounded candidate pool (default: top 200 raw signals) and rescans posts to build temporary post ID sets for those candidates. Candidate pairs are compared only when they are lexically plausible, such as substring relationships, reversed bigrams, same normalized words, shared compound words, or matching AI labels from a previous local run.
+
+Signals are merged only when deterministic post-level evidence is strong:
+- Jaccard overlap
+- Reciprocal directional coverage
+- Monthly pattern similarity
+- Stronger broad-vs-narrow checks for containment pairs
+
+One-directional containment is not enough. For example, `gaza city` may mostly appear inside `gaza`, but most `gaza` posts may not be about `gaza city`, so those remain separate unless overlap is strong and reciprocal.
+
+For merged groups, all metrics are recomputed from the union of unique post IDs per month and channel. Counts are never summed across member signals, so posts that mention multiple member topics are not double counted.
+
+### Display Quality
+
+The artifacts keep all final consolidated groups, including generic lexical signals. The dashboard applies a deterministic display-quality flag to prefer topic-like groups in the main Top Trends list.
+
+This pass can hide weak standalone terms such as `city`, `september`, `platforms`, `speech`, or partial phrase fragments like `rosh` from the main list, while keeping them in `consolidated_trends.json` for auditability.
+
+Genericness is conservative and is not the same as being a unigram. Clear topics such as `hostages`, `qatar`, `gaza`, `hamas`, `houthi`, `trump`, and `kirk` remain displayable.
 
 ### Filtering
 
@@ -168,11 +204,13 @@ s3://signaldrop-data-matan-2026/processed/
 Required files:
 - `overview.json`
 - `trends.json`
+- `consolidated_trends.json`
 - `trend_timeseries.json`
 - `channel_breakdown.json`
 - `representative_posts.json`
 - `methodology.json`
 - `ai_labels.json` *(optional — only if you ran AI labeling)*
+- `ai_insights.json` *(optional — only if you ran AI insights)*
 
 Helper script (uses your local AWS credentials, e.g. via `aws sso login` or `~/.aws/credentials`):
 
@@ -220,8 +258,8 @@ signaldrop-dashboard/
 │       └── types/
 ├── data_processing/      # Offline preprocessing pipeline
 │   ├── loaders/          # BaseLoader + TelegramCsvLoader
-│   ├── services/         # Cleaning, n-grams, scoring, AI labeling
-│   └── scripts/          # ingest_and_compute, generate_ai_labels, upload_to_s3
+│   ├── services/         # Cleaning, n-grams, scoring, consolidation, AI presentation
+│   └── scripts/          # ingest_and_compute, generate_ai_labels, generate_ai_insights, upload_to_s3
 ├── ARCHITECTURE.md       # Scaling and design decisions
 ├── Makefile
 ├── .env.example          # Placeholders only — safe to commit
@@ -256,6 +294,7 @@ Adding a new source (Facebook, Reddit, etc.) means writing a new loader class. T
 | `GET /api/channels?topic=X` | Channel-level breakdown for a topic |
 | `GET /api/methodology` | Scoring methodology documentation |
 | `GET /api/ai-labels` | AI labels if `ai_labels.json` exists, else `{}` |
+| `GET /api/ai-insights` | AI key findings if `ai_insights.json` exists, else `{}` |
 
 ## Git Hygiene
 

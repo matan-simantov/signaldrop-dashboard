@@ -5,6 +5,22 @@ export function resolveLabel(topic: string, aiLabels: AiLabels): string {
   return entry?.short_label || entry?.label || topic;
 }
 
+export function resolveTrendLabel(trend: Trend, aiLabels: AiLabels): string {
+  const primary = aiLabels[trend.topic];
+  const representative = trend.representative_topic
+    ? aiLabels[trend.representative_topic]
+    : undefined;
+  return (
+    primary?.short_label ||
+    primary?.label ||
+    representative?.short_label ||
+    representative?.label ||
+    trend.label ||
+    trend.representative_topic ||
+    trend.topic
+  );
+}
+
 /**
  * Filter the top trends so the main view doesn't show two rows with the same
  * AI label (e.g. "Charlie Kirk Shooting" vs "Charlie Kirk Attack"). Keeps the
@@ -15,7 +31,7 @@ export function dedupeByLabel(trends: Trend[], aiLabels: AiLabels, limit = 10): 
   const seen = new Set<string>();
   const out: Trend[] = [];
   for (const t of trends) {
-    const key = resolveLabel(t.topic, aiLabels).trim().toLowerCase();
+    const key = resolveTrendLabel(t, aiLabels).trim().toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
     out.push(t);

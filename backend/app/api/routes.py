@@ -57,3 +57,9 @@ def get_methodology():
 def get_ai_labels():
     """Returns AI-generated labels for top trends, or {} if AI labeling was not run."""
     return trend_service.get_ai_labels()
+
+
+@router.get("/ai-insights")
+def get_ai_insights():
+    """Returns AI-generated key findings, or {} if AI insights were not generated."""
+    return trend_service.get_ai_insights()

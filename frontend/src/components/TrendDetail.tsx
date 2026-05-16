@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { X } from 'lucide-react';
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from 'recharts';
@@ -7,6 +8,7 @@ import type { TrendDetail as TrendDetailType, AiLabel } from '../types';
 interface Props {
   data: TrendDetailType;
   aiLabel?: AiLabel;
+  onClose: () => void;
 }
 
 const MONTH_LABELS: Record<string, string> = {
@@ -18,7 +20,7 @@ const MONTH_LABELS: Record<string, string> = {
 
 const DEFAULT_POSTS_SHOWN = 3;
 
-export function TrendDetail({ data, aiLabel }: Props) {
+export function TrendDetail({ data, aiLabel, onClose }: Props) {
   const { trend, timeseries, channels, representative_posts } = data;
   const [showAllPosts, setShowAllPosts] = useState(false);
 
@@ -30,8 +32,11 @@ export function TrendDetail({ data, aiLabel }: Props) {
       mentions: timeseries.monthly_mentions[month],
     }));
 
-  const title = aiLabel?.short_label || aiLabel?.label || `"${trend.topic}"`;
+  const title = aiLabel?.short_label || aiLabel?.label || trend.label || `"${trend.representative_topic || trend.topic}"`;
   const declinePct = Math.round(trend.decline_percentage * 100);
+  const representativeSignal = trend.representative_topic || trend.topic;
+  const relatedSignals = trend.member_topics || [representativeSignal];
+  const isGrouped = relatedSignals.length > 1;
   const visiblePosts = showAllPosts
     ? representative_posts
     : representative_posts.slice(0, DEFAULT_POSTS_SHOWN);
@@ -55,29 +60,44 @@ export function TrendDetail({ data, aiLabel }: Props) {
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-6 md:p-8 space-y-8 dark:border-slate-700 dark:bg-slate-800/60">
       {/* Header */}
-      <div>
-        <div className="flex items-center gap-3 flex-wrap">
-          <h2 className="text-xl font-semibold text-slate-900 dark:text-slate-100">{title}</h2>
-          {aiLabel?.category && (
-            <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 dark:bg-indigo-500/10 dark:text-indigo-300 dark:border-indigo-500/30">
-              {aiLabel.category}
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <div className="flex items-center gap-3 flex-wrap">
+            <h2 className="text-xl font-semibold text-slate-900 dark:text-slate-100">{title}</h2>
+            {aiLabel?.category && (
+              <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 dark:bg-indigo-500/10 dark:text-indigo-300 dark:border-indigo-500/30">
+                {aiLabel.category}
+              </span>
+            )}
+            <span className="text-xs text-slate-500 font-mono dark:text-slate-400">
+              signal: {representativeSignal}
             </span>
+          </div>
+          {isGrouped && (
+            <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+              Grouped from {relatedSignals.length} related signals: {relatedSignals.join(', ')}
+            </p>
           )}
-          <span className="text-xs text-slate-500 font-mono dark:text-slate-400">
-            keyword: {trend.topic}
-          </span>
-        </div>
-        {aiLabel?.explanation && (
-          <p className="mt-3 text-sm text-slate-600 dark:text-slate-300 leading-relaxed max-w-3xl">
-            {aiLabel.explanation}
+          {aiLabel?.explanation && (
+            <p className="mt-3 text-sm text-slate-600 dark:text-slate-300 leading-relaxed max-w-3xl">
+              {aiLabel.explanation}
+            </p>
+          )}
+          <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">
+            Raw mentions fell from {trend.sep_mentions.toLocaleString()} to{' '}
+            {trend.dec_mentions.toLocaleString()}, while normalized share declined from{' '}
+            {(trend.sep_share * 100).toFixed(2)}% to {(trend.dec_share * 100).toFixed(2)}% — a{' '}
+            {declinePct}% relative drop in share of monthly conversation.
           </p>
-        )}
-        <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">
-          Raw mentions fell from {trend.sep_mentions.toLocaleString()} to{' '}
-          {trend.dec_mentions.toLocaleString()}, while normalized share declined from{' '}
-          {(trend.sep_share * 100).toFixed(2)}% to {(trend.dec_share * 100).toFixed(2)}% — a{' '}
-          {declinePct}% relative drop in share of monthly conversation.
-        </p>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close trend detail"
+          className="shrink-0 inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition hover:bg-slate-50 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-400 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-100"
+        >
+          <X size={16} />
+        </button>
       </div>
 
       {/* Stats */}
@@ -116,7 +136,7 @@ export function TrendDetail({ data, aiLabel }: Props) {
                 color: 'rgb(15 23 42)',
                 fontSize: 12,
               }}
-              formatter={((value: number) => [`${value}%`, 'Share']) as any}
+              formatter={value => [`${value}%`, 'Share']}
             />
             <Line
               type="monotone"
@@ -135,7 +155,7 @@ export function TrendDetail({ data, aiLabel }: Props) {
         <div>
           <div className="mb-3">
             <h3 className="text-sm font-medium text-slate-700 dark:text-slate-300">
-              Where this topic disappeared
+              Channel-level drops
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
               Channels with at least 10 September mentions, sorted by largest mention drop.
