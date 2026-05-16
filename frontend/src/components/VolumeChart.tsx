@@ -22,23 +22,44 @@ export function VolumeChart({ volumes }: Props) {
     }));
 
   return (
-    <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-6">
-      <h2 className="text-xl font-semibold text-white mb-1">Monthly Post Volume</h2>
-      <p className="text-slate-400 text-sm mb-4">
-        Volume varies significantly — this is why we normalize by monthly total
+    <section className="rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-700 dark:bg-slate-800/60">
+      <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+        Monthly post volume
+      </h2>
+      <p className="mt-1 text-sm text-slate-600 dark:text-slate-400 max-w-3xl">
+        Posting volume dropped sharply by December, so trends are ranked by share of monthly
+        conversation rather than raw mention counts.
       </p>
-      <ResponsiveContainer width="100%" height={200}>
-        <BarChart data={data}>
-          <XAxis dataKey="month" stroke="#64748b" />
-          <YAxis stroke="#64748b" tickFormatter={v => `${(v / 1000).toFixed(0)}k`} />
-          <Tooltip
-            contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: 8 }}
-            labelStyle={{ color: '#f1f5f9' }}
-            formatter={((value: number) => [value.toLocaleString(), 'Posts']) as any}
-          />
-          <Bar dataKey="posts" fill="#6366f1" radius={[4, 4, 0, 0]} />
-        </BarChart>
-      </ResponsiveContainer>
-    </div>
+      <div className="mt-4">
+        <ResponsiveContainer width="100%" height={200}>
+          <BarChart data={data} margin={{ top: 8, right: 8, left: -8, bottom: 0 }}>
+            <XAxis
+              dataKey="month"
+              stroke="#94a3b8"
+              tick={{ fill: 'currentColor' }}
+              className="text-slate-500 dark:text-slate-400"
+            />
+            <YAxis
+              stroke="#94a3b8"
+              tickFormatter={v => `${(v / 1000).toFixed(0)}k`}
+              tick={{ fill: 'currentColor' }}
+              className="text-slate-500 dark:text-slate-400"
+            />
+            <Tooltip
+              cursor={{ fill: 'rgba(99, 102, 241, 0.08)' }}
+              contentStyle={{
+                backgroundColor: 'rgb(255 255 255)',
+                border: '1px solid rgb(226 232 240)',
+                borderRadius: 8,
+                color: 'rgb(15 23 42)',
+                fontSize: 12,
+              }}
+              formatter={((value: number) => [value.toLocaleString(), 'Posts']) as any}
+            />
+            <Bar dataKey="posts" fill="#4f46e5" radius={[4, 4, 0, 0]} />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    </section>
   );
 }

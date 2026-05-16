@@ -1,13 +1,19 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { api } from './api/client';
+import { Header } from './components/Header';
+import { KeyFindings } from './components/KeyFindings';
 import { OverviewCards } from './components/OverviewCards';
-import { TrendChart } from './components/TrendChart';
+import { TrendList } from './components/TrendList';
 import { TrendDetail } from './components/TrendDetail';
 import { VolumeChart } from './components/VolumeChart';
 import { MethodologyCard } from './components/MethodologyCard';
+import { useTheme } from './hooks/useTheme';
+import { dedupeByLabel } from './lib/labels';
+import { deriveKeyFindings } from './lib/insights';
 import type { Overview, Trend, TrendDetail as TrendDetailType, Methodology, AiLabels } from './types';
 
 function App() {
+  const { theme, toggle } = useTheme();
   const [overview, setOverview] = useState<Overview | null>(null);
   const [trends, setTrends] = useState<Trend[]>([]);
   const [methodology, setMethodology] = useState<Methodology | null>(null);
@@ -45,58 +51,67 @@ function App() {
     api.getTrendDetail(selectedTopic).then(setTrendDetail).catch(console.error);
   }, [selectedTopic]);
 
+  // Dedup the main list so multiple keywords mapped to the same AI label don't
+  // dominate the top 10. Full trend data remains available via the detail panel.
+  const visibleTrends = useMemo(
+    () => dedupeByLabel(trends, aiLabels, 10),
+    [trends, aiLabels],
+  );
+
+  const keyFindings = useMemo(
+    () => deriveKeyFindings(visibleTrends, aiLabels),
+    [visibleTrends, aiLabels],
+  );
+
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-slate-400 text-lg">Loading SignalDrop...</div>
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
+        <div className="text-slate-500 dark:text-slate-400 text-lg">Loading SignalDrop…</div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-red-400 text-lg">Error: {error}</div>
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
+        <div className="text-rose-600 dark:text-rose-400 text-lg">Error: {error}</div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen p-6 md:p-10 max-w-7xl mx-auto space-y-8">
-      {/* Header */}
-      <header className="text-center space-y-2">
-        <h1 className="text-4xl md:text-5xl font-bold text-white tracking-tight">
-          Signal<span className="text-indigo-400">Drop</span>
-        </h1>
-        <p className="text-slate-400 text-lg max-w-2xl mx-auto">
-          A social intelligence dashboard detecting declining conversation trends across Telegram channels
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 md:py-12 space-y-10">
+        <Header overview={overview} theme={theme} onToggleTheme={toggle} />
+
+        <KeyFindings findings={keyFindings} />
+
+        {overview && <OverviewCards data={overview} />}
+
+        <TrendList
+          trends={visibleTrends}
+          aiLabels={aiLabels}
+          onSelect={setSelectedTopic}
+          selectedTopic={selectedTopic}
+        />
+
+        {trendDetail && (
+          <TrendDetail data={trendDetail} aiLabel={aiLabels[trendDetail.trend.topic]} />
+        )}
+
+        {overview && <VolumeChart volumes={overview.monthly_volumes} />}
+
+        {methodology && <MethodologyCard data={methodology} />}
+
+        <p className="text-xs text-slate-500 dark:text-slate-400 text-center max-w-3xl mx-auto">
+          AI is used only to generate readable labels and explanations. Trend ranking is fully
+          deterministic and based on normalized September-to-December share of conversation.
         </p>
-      </header>
 
-      {/* Overview */}
-      {overview && <OverviewCards data={overview} />}
-
-      {/* Volume chart */}
-      {overview && <VolumeChart volumes={overview.monthly_volumes} />}
-
-      {/* Main trend chart */}
-      <TrendChart
-        trends={trends}
-        aiLabels={aiLabels}
-        onSelect={setSelectedTopic}
-        selectedTopic={selectedTopic}
-      />
-
-      {/* Trend detail panel */}
-      {trendDetail && <TrendDetail data={trendDetail} aiLabel={aiLabels[trendDetail.trend.topic]} />}
-
-      {/* Methodology */}
-      {methodology && <MethodologyCard data={methodology} />}
-
-      {/* Footer */}
-      <footer className="text-center text-slate-500 text-sm py-6 border-t border-slate-800">
-        SignalDrop — Built for trend analysis of public Telegram data (Sep–Dec 2025)
-      </footer>
+        <footer className="text-center text-xs text-slate-400 dark:text-slate-500 py-6 border-t border-slate-200 dark:border-slate-800">
+          SignalDrop · public Telegram trend analysis · Sep–Dec 2025
+        </footer>
+      </div>
     </div>
   );
 }

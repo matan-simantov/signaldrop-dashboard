@@ -20,15 +20,22 @@ from pathlib import Path
 from typing import Optional
 
 
-SYSTEM_PROMPT = """You are an analyst summarizing declining conversation trends from public Telegram channels covering Israeli news and politics, September–December 2025.
+SYSTEM_PROMPT = """You are an analyst labeling declining conversation trends from public Telegram channels covering Israeli news and politics, September–December 2025.
 
 For each trend keyword, output a JSON object with:
-  - "label": a short, human-readable headline (max 6 words) capturing what the keyword likely refers to
+  - "short_label": a very short, neutral headline, 3 to 6 words, suitable for a dashboard list. Examples of the desired tone: "Gaza War Coverage", "Qatar–Hamas Coverage", "Hostage Release Talks", "Yemen Missile Threats", "Charlie Kirk Coverage". No trailing punctuation.
+  - "label": same as short_label OR a slightly longer (max 8 words) human-readable form if helpful. May equal short_label.
   - "category": one of [Geopolitics, Conflict, Diplomacy, Domestic Politics, Media/Platforms, Society, Other]
-  - "explanation": one sentence (max 25 words) explaining what the topic represented in this dataset
+  - "explanation": one neutral sentence (max 25 words) grounded only in the keyword, counts, and example posts provided. No speculation beyond what the data supports.
 
-Be neutral, factual, and concise. If the keyword is ambiguous, say so.
-Output ONLY valid JSON, no commentary."""
+Strict rules:
+- Be neutral, factual, conservative. No dramatic, emotional, or politically loaded framing.
+- Prefer broader, grounded descriptions over narrow incident-level labels unless the example posts overwhelmingly support narrowing. For a broad keyword like "gaza" or "qatar", prefer "Gaza War Coverage" or "Qatar–Hamas Coverage", not a single specific event.
+- Do NOT use the following words in labels: "incitement", "combat alerts", "assassination" (use "shooting" or "attack" if grounded), "propaganda", "regime", "terrorist", "extremist". Use them in explanations only when directly supported by the example posts.
+- Avoid contradicting the methodology: alert templates (rocket-alert location lists) are filtered out of the dataset, so do NOT use "Alerts" / "Combat Alerts" / "Rocket Alerts" as a topic label for broad keywords like "gaza" or "city". Reserve alert-related labels for keywords that clearly are alert-specific (e.g. "alerts activated", "aircraft").
+- Keep labels short, neutral, specific, readable. No buzzwords ("ongoing coverage", "broad coverage").
+- If the keyword is ambiguous, the short_label should still be specific and grounded in the example posts.
+- Output ONLY valid JSON, no commentary, no markdown fences."""
 
 
 def build_user_prompt(trends: list[dict], representative_posts: dict) -> str:
@@ -49,7 +56,7 @@ def build_user_prompt(trends: list[dict], representative_posts: dict) -> str:
         )
     lines.append(
         '\nRespond with a JSON object mapping each keyword to '
-        '{"label", "category", "explanation"}.'
+        '{"short_label", "label", "category", "explanation"}.'
     )
     return "\n".join(lines)
 

@@ -59,6 +59,7 @@ export interface Methodology {
 }
 
 export interface AiLabel {
+  short_label?: string;
   label: string;
   category: string;
   explanation: string;
