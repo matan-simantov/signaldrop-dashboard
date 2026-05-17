@@ -1,8 +1,12 @@
 # SignalDrop
 
-A social intelligence dashboard that identifies declining conversation trends across public Telegram channels.
+SignalDrop is a social-intelligence system that analyzes public conversation datasets and surfaces topics whose **share of attention is declining over time**.
 
-Analyzes ~700K posts from 366 channels (Sep–Dec 2025) and surfaces topics whose normalized share of discussion dropped significantly from September to December.
+The pipeline is loader-based: any public text source (Telegram, Facebook, Reddit, etc.) can be plugged in via a `BaseLoader` that maps source-specific rows into a normalized post schema. The rest of the pipeline — text cleaning, n-gram extraction, normalized share scoring, deterministic consolidation, display-quality filtering — runs unchanged across sources.
+
+The currently shipped dataset is **public Telegram channels** (~694K posts, 366 channels, September–December 2025). The dashboard opens on a generic home screen with dataset cards; clicking the Telegram card opens its analysis workspace. Future loaders (Facebook, other public text sources) appear as disabled cards.
+
+**Core principle:** all counts, shares, rankings, and topic groupings are deterministic. AI (Anthropic) is optional and local-only — it produces human-readable labels and a short Key Findings summary from already-computed deterministic outputs. AI never calculates rankings, counts, shares, decline metrics, or topic groups.
 
 ## Architecture Overview
 

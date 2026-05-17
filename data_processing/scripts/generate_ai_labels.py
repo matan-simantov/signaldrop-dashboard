@@ -25,8 +25,10 @@ def main():
     parser.add_argument("--artifacts", default="./artifacts", help="Artifacts directory")
     args = parser.parse_args()
 
-    success = run(Path(args.artifacts))
-    sys.exit(0 if success else 0)  # exit 0 even on skip — this is optional
+    # AI labeling is optional — exit 0 even when skipped or failed, so callers
+    # (Makefile, CI) don't break when ANTHROPIC_API_KEY isn't set.
+    run(Path(args.artifacts))
+    sys.exit(0)
 
 
 if __name__ == "__main__":
