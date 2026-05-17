@@ -158,7 +158,9 @@ export function TrendDetail({ data, aiLabel, onClose }: Props) {
               Channel-level drops
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-              Channels with at least 10 September mentions, sorted by largest mention drop.
+              First-observed channels (after dedup) with at least 10 September mentions, sorted by
+              largest mention drop. Not a claim about the original source — the dataset has no
+              forward metadata.
             </p>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">

@@ -69,11 +69,14 @@ BOILERPLATE_NGRAMS = frozenset([
     "instagram tiktok", "device computer", "easy device",
 ])
 
-# Single tokens that are UI boilerplate, not real topic signal
+# Single tokens that are UI boilerplate, not real topic signal.
+# Social-platform names included here because they overwhelmingly appear in
+# footer / "follow us on X" text rather than as topical content.
 BOILERPLATE_TOKENS = frozenset([
     "computer", "mobile", "device", "reading", "easy", "n12chat",
     "click", "subscribe", "join", "share", "updates", "follow",
     "channel", "group", "link", "telegram",
+    "tiktok", "instagram", "facebook", "youtube", "twitter", "whatsapp",
 ])
 
 

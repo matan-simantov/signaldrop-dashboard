@@ -1,11 +1,23 @@
 export interface Overview {
-  total_posts: number;
+  total_posts: number; // canonical posts (after exact-cleaned-content dedup)
   channels: number;
+  observed_posts?: number;
+  observed_channels?: number;
+  deduplication?: {
+    method: string;
+    min_content_length_for_dedup: number;
+    duplicate_rows_collapsed: number;
+    short_rows_exempt_from_dedup: number;
+    duplicate_hashes: number;
+    cross_channel_duplicate_hashes: number;
+    channel_attribution_rule: string;
+  };
   date_range: {
     start: string;
     end: string;
   };
   monthly_volumes: Record<string, number>;
+  observed_monthly_volumes?: Record<string, number>;
   declining_trends_found: number;
   top_trends_included: number;
 }

@@ -7,15 +7,18 @@ interface Props {
 }
 
 const SUMMARY =
-  'We compare each topic’s share of monthly conversation in September and December, rather than raw counts, because overall posting volume changed significantly.';
+  'We rank topic signals by their normalized September-to-December decline in share of unique deduplicated cleaned-text posts, not by raw counts. Cross-posted copies of the same message collapse into one canonical post so a single forwarded text does not look like many independent occurrences.';
 
 const PIPELINE_STEPS = [
-  'Extract keyword n-grams from translated post text.',
-  'Calculate each topic’s monthly conversation share (mentions ÷ total posts in month).',
-  'Rank topics by normalized September-to-December decline, weighted by topic significance.',
-  'Consolidate duplicate lexical signals only when post-level overlap is strong and reciprocal.',
-  'Prefer displayable topic-like groups in the main list while keeping generic signals in artifacts.',
-  'Filter out repeated alert templates and boilerplate UI text.',
+  'Load every observed Telegram post into an in-memory database.',
+  'Clean each post (lowercase, strip URLs, remove punctuation, collapse whitespace) and hash the cleaned text with SHA-1.',
+  'Mark canonical posts: keep one row per cleaned-text hash (earliest published_at wins). All downstream steps use canonical posts only.',
+  'Filter Home Front Command alert templates and UI / social-footer boilerplate (whatsapp, instagram, tiktok, …) before n-gram extraction.',
+  'Extract unigrams + bigrams per canonical post; deduplicate n-grams within each post.',
+  'Compute monthly_share = canonical posts mentioning the topic ÷ total canonical posts in month.',
+  'Rank by normalized Sep→Dec decline, weighted by September topic share.',
+  'Consolidate duplicate lexical signals only when reciprocal post-level overlap is strong, using the union of canonical post IDs.',
+  'Prefer displayable topic-like groups in the main list while keeping generic signals in artifacts for auditability.',
   'Use AI only for readable labels and summaries — never for ranking, grouping, counts, shares, or decline metrics.',
 ];
 
@@ -105,8 +108,10 @@ export function MethodologyCard({ data }: Props) {
           <div className="rounded-lg p-3 bg-slate-50 border border-slate-200 text-xs text-slate-600 dark:bg-slate-900/40 dark:border-slate-700 dark:text-slate-300 leading-relaxed">
             Topics whose normalized share <em>increased</em> from September to December are
             excluded from this ranking. This assignment focuses on{' '}
-            <strong>declining</strong> conversation trends. Consolidated group metrics use unique
-            post IDs, so duplicate member signals do not double count the same post.
+            <strong>declining</strong> topic signals. Consolidated groups use the union of
+            canonical post IDs, so duplicate member signals never double count the same post.
+            Channel attribution after dedup reflects the <em>first observed channel</em> for a
+            cleaned-text hash, which is not necessarily the original source.
           </div>
           {data.limitations?.length > 0 && (
             <div>

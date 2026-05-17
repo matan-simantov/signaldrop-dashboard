@@ -13,8 +13,9 @@ export function HomeScreen({ onOpenTelegram }: Props) {
         </h2>
         <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
           Select a public conversation dataset to open its analysis workspace. Each workspace
-          surfaces topics whose share of attention is declining over time, using deterministic
-          metrics. AI is used only for readable labels and summaries.
+          detects topic signals whose normalized share of observed posts is declining over time,
+          using deterministic metrics over deduplicated cleaned-text posts. AI is used only for
+          readable labels and summaries — never for ranking, counts, or grouping.
         </p>
       </div>
 
@@ -49,11 +50,11 @@ function ActiveDatasetCard({ onOpen }: { onOpen: () => void }) {
             Public Telegram Channels Dataset
           </div>
           <p className="mt-1.5 text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
-            Public Telegram posts analyzed for declining conversation trends between September
-            and December 2025.
+            Observed public Telegram posts analyzed for declining topic signals across deduplicated
+            cleaned-text posts between September and December 2025.
           </p>
           <div className="mt-3 text-xs text-slate-500 dark:text-slate-400">
-            693,989 posts · 366 channels · Sep–Dec 2025
+            693,989 observed · 593,094 unique cleaned-text · 366 channels · Sep–Dec 2025
           </div>
           <div className="mt-4 inline-flex items-center gap-1.5 text-xs font-medium text-indigo-600 transition group-hover:gap-2 dark:text-indigo-300">
             Open Telegram analysis

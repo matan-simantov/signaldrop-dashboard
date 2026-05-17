@@ -12,6 +12,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sqlite3
 import sys
@@ -19,11 +20,21 @@ import time
 from collections import Counter, defaultdict
 from pathlib import Path
 
+# Minimum cleaned-content length to participate in deduplication.
+# Posts shorter than this stay as distinct rows (typical: stickers, emoji-only,
+# 1-2 word reactions). These are reported separately for transparency.
+MIN_CONTENT_LENGTH_FOR_DEDUP = 20
+
 # Add project root to path for imports
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from data_processing.loaders.telegram_csv_loader import TelegramCsvLoader
-from data_processing.services.text_cleaning import clean_text, tokenize, is_alert_post, is_boilerplate_ngram
+from data_processing.services.text_cleaning import (
+    clean_text,
+    tokenize,
+    is_alert_post,
+    is_boilerplate_ngram,
+)
 from data_processing.services.ngram_extraction import extract_ngrams
 from data_processing.services.trend_scoring import compute_trend_scores
 from data_processing.services.topic_consolidation import (
@@ -44,15 +55,24 @@ def create_db_schema(conn: sqlite3.Connection):
             content TEXT NOT NULL,
             source_name TEXT NOT NULL,
             source_id TEXT NOT NULL,
-            source_type TEXT NOT NULL
+            source_type TEXT NOT NULL,
+            content_hash TEXT,
+            is_canonical INTEGER NOT NULL DEFAULT 1
         )
     """)
     conn.execute("CREATE INDEX idx_posts_month ON posts(month)")
     conn.execute("CREATE INDEX idx_posts_source ON posts(source_name)")
+    conn.execute("CREATE INDEX idx_posts_hash ON posts(content_hash)")
+    conn.execute("CREATE INDEX idx_posts_canonical ON posts(is_canonical)")
 
 
 def ingest_to_sqlite(csv_path: str, conn: sqlite3.Connection) -> int:
-    """Load CSV into SQLite in-memory. Returns row count."""
+    """Load CSV into SQLite in-memory. Returns row count.
+
+    Each row gets a `content_hash` computed from clean_text(content) so we can
+    deduplicate exact copies later. Rows whose cleaned content is shorter than
+    MIN_CONTENT_LENGTH_FOR_DEDUP get a NULL hash and are exempt from dedup.
+    """
     loader = TelegramCsvLoader(csv_path)
     count = 0
     batch = []
@@ -60,34 +80,123 @@ def ingest_to_sqlite(csv_path: str, conn: sqlite3.Connection) -> int:
 
     for post in loader.load():
         month = post.published_at.strftime("%Y-%m")
+        cleaned = clean_text(post.content)
+        if len(cleaned) >= MIN_CONTENT_LENGTH_FOR_DEDUP:
+            chash: str | None = hashlib.sha1(cleaned.encode("utf-8")).hexdigest()
+        else:
+            chash = None  # too short — exempt from dedup, stays distinct
         batch.append((
             post.id, post.published_at.isoformat(), month,
             post.content, post.source_name, post.source_id, post.source_type,
+            chash, 1,
         ))
         count += 1
         if len(batch) >= batch_size:
             conn.executemany(
-                "INSERT OR IGNORE INTO posts VALUES (?, ?, ?, ?, ?, ?, ?)", batch
+                "INSERT OR IGNORE INTO posts VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", batch
             )
             batch = []
 
     if batch:
         conn.executemany(
-            "INSERT OR IGNORE INTO posts VALUES (?, ?, ?, ?, ?, ?, ?)", batch
+            "INSERT OR IGNORE INTO posts VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", batch
         )
     conn.commit()
     return count
 
 
+def mark_canonical_posts(conn: sqlite3.Connection) -> dict[str, int]:
+    """Mark only one post per content_hash as canonical.
+
+    For each non-null content_hash, the earliest-published row wins.
+    All other rows with the same hash are flagged is_canonical=0.
+
+    Rows with NULL content_hash (too-short cleaned content, exempt from dedup)
+    are left as-is — they all stay canonical so they remain distinct posts.
+
+    Returns:
+        Stats dict with: observed_rows, canonical_rows, duplicate_rows_collapsed,
+        short_rows_exempt, duplicate_hashes, cross_channel_duplicate_hashes.
+    """
+    observed_rows = conn.execute("SELECT COUNT(*) FROM posts").fetchone()[0]
+    short_rows_exempt = conn.execute(
+        "SELECT COUNT(*) FROM posts WHERE content_hash IS NULL"
+    ).fetchone()[0]
+
+    # For every hash, find the earliest (id, published_at) row; mark others non-canonical.
+    # Tie-breaker: published_at first, then id (lexicographic).
+    conn.execute("""
+        UPDATE posts
+           SET is_canonical = 0
+         WHERE content_hash IS NOT NULL
+           AND id NOT IN (
+               SELECT id FROM (
+                   SELECT id,
+                          ROW_NUMBER() OVER (
+                              PARTITION BY content_hash
+                              ORDER BY published_at ASC, id ASC
+                          ) AS rn
+                   FROM posts
+                   WHERE content_hash IS NOT NULL
+               )
+               WHERE rn = 1
+           )
+    """)
+    conn.commit()
+
+    canonical_rows = conn.execute(
+        "SELECT COUNT(*) FROM posts WHERE is_canonical = 1"
+    ).fetchone()[0]
+    duplicate_rows_collapsed = observed_rows - canonical_rows
+
+    duplicate_hashes = conn.execute("""
+        SELECT COUNT(*) FROM (
+            SELECT content_hash
+              FROM posts
+             WHERE content_hash IS NOT NULL
+             GROUP BY content_hash
+            HAVING COUNT(*) > 1
+        )
+    """).fetchone()[0]
+
+    cross_channel_duplicate_hashes = conn.execute("""
+        SELECT COUNT(*) FROM (
+            SELECT content_hash
+              FROM posts
+             WHERE content_hash IS NOT NULL
+             GROUP BY content_hash
+            HAVING COUNT(DISTINCT source_name) > 1
+               AND COUNT(*) > 1
+        )
+    """).fetchone()[0]
+
+    return {
+        "observed_rows": observed_rows,
+        "canonical_rows": canonical_rows,
+        "duplicate_rows_collapsed": duplicate_rows_collapsed,
+        "short_rows_exempt_from_dedup": short_rows_exempt,
+        "duplicate_hashes": duplicate_hashes,
+        "cross_channel_duplicate_hashes": cross_channel_duplicate_hashes,
+    }
+
+
 def compute_monthly_ngrams(conn: sqlite3.Connection) -> tuple[
     dict[str, dict[str, int]],  # ngram -> {month: count}
-    dict[str, int],              # month -> total posts
+    dict[str, int],              # month -> total canonical posts
     dict[str, dict[str, dict[str, int]]],  # channel -> ngram -> {month: count}
-    dict[str, dict[str, int]],   # channel -> {month: total}
+    dict[str, dict[str, int]],   # channel -> {month: total canonical posts}
 ]:
     """
     Extract n-grams per month and per channel.
-    Returns global and channel-level monthly n-gram counts.
+
+    Operates ONLY on canonical posts (is_canonical=1). Duplicates of the same
+    cleaned-text content have already been collapsed by mark_canonical_posts —
+    the channel of the canonical post is the channel of the earliest observed
+    copy ("first observed channel"). This is NOT a claim about the original
+    source — the CSV has no forward metadata.
+
+    Both numerator (topic mentions) and denominator (monthly_totals) use the
+    canonical set, so monthly_share is internally consistent.
     """
     # Global counters
     monthly_ngram_counts: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
@@ -99,7 +208,9 @@ def compute_monthly_ngrams(conn: sqlite3.Connection) -> tuple[
     )
     channel_monthly_totals: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
 
-    cursor = conn.execute("SELECT month, content, source_name FROM posts")
+    cursor = conn.execute(
+        "SELECT month, content, source_name FROM posts WHERE is_canonical = 1"
+    )
     alert_count = 0
 
     for month, content, channel in cursor:
@@ -141,13 +252,15 @@ def find_representative_posts(
     representatives: dict[str, list[dict]] = {}
 
     for topic in topics:
-        # Search for posts containing the topic phrase in September
+        # Search for canonical posts containing the topic phrase in September
         search_term = f"%{topic}%"
         cursor = conn.execute(
             """
             SELECT id, published_at, content, source_name
             FROM posts
-            WHERE month = '2025-09' AND LOWER(content) LIKE ?
+            WHERE is_canonical = 1
+              AND month = '2025-09'
+              AND LOWER(content) LIKE ?
             LIMIT ?
             """,
             (search_term, max_per_topic),
@@ -220,28 +333,67 @@ def compute_channel_breakdown(
 def build_methodology() -> dict:
     """Document the scoring methodology for transparency."""
     return {
-        "description": "Deterministic trend detection based on normalized n-gram frequency analysis.",
+        "description": (
+            "Deterministic detection of declining topic signals across observed Telegram posts, "
+            "normalized for monthly volume and deduplicated by exact cleaned-text matching."
+        ),
+        "metric_definition": (
+            "September-to-December decline in share of unique deduplicated cleaned-text posts. "
+            "Two posts are considered duplicates when their cleaned content (lowercased, "
+            "punctuation-stripped, whitespace-collapsed) is byte-identical. The dataset is "
+            "observed Telegram posts — channel attribution reflects the first observed channel "
+            "for a cleaned-text hash, not the original source. The CSV has no forward metadata."
+        ),
         "ranking": (
-            "Trends are ranked by normalized September-to-December decline, weighted by September "
-            "topic share to avoid over-ranking tiny low-volume topics that happen to vanish entirely."
+            "Trends are ranked by normalized September-to-December decline in share of unique "
+            "deduplicated posts, weighted by September topic share to avoid over-ranking tiny "
+            "low-volume topics that happen to vanish entirely."
         ),
         "steps": [
-            "1. Load posts into SQLite in-memory database.",
-            "2. Skip Home Front Command alert posts — these are location lists, not topical content.",
-            "3. Clean text: lowercase, remove URLs, strip punctuation.",
-            "4. Tokenize and extract unigrams + bigrams per post. Drop stopwords and UI boilerplate tokens.",
-            "5. Deduplicate n-grams within each post (a post mentioning 'ceasefire' 5 times counts as 1).",
-            "6. Compute monthly_share = posts_mentioning_ngram / total_posts_in_month.",
-            "7. Compute decline_percentage = (sep_share - dec_share) / sep_share.",
-            "8. Compute ranking_score = absolute_delta × decline_percentage (decline weighted by significance).",
-            "9. Filter: min 50 September mentions, min 0.05% share, min 30% decline.",
-            "10. Consolidate duplicate lexical signals only when reciprocal post-level overlap is strong.",
-            "11. Recompute consolidated group metrics from unique post IDs to avoid double counting.",
-            "12. Mark generic or duplicate-looking signals for display quality without deleting them.",
+            "1. Load every observed Telegram post into an in-memory SQLite database.",
+            "2. Compute clean_text(content) = lowercase + strip URLs + remove punctuation + collapse whitespace.",
+            "3. Mark canonical posts: SHA-1 hash the cleaned text; keep one canonical row per hash "
+               "(earliest published_at, lexicographic tie-break). All downstream steps use canonical posts only.",
+            "4. Posts whose cleaned-text length is below the dedup threshold are exempt from dedup "
+               "and stay as distinct rows (typically stickers, emoji-only, 1–2 word reactions).",
+            "5. Skip Home Front Command alert posts from n-gram extraction — long location lists, not topical content.",
+            "6. Tokenize and extract unigrams + bigrams per canonical post. Drop stopwords and UI/footer boilerplate tokens.",
+            "7. Deduplicate n-grams within each post (a post mentioning 'ceasefire' 5 times counts as 1).",
+            "8. Compute monthly_share = canonical_posts_mentioning_ngram / total_canonical_posts_in_month.",
+            "9. Compute decline_percentage = (sep_share - dec_share) / sep_share.",
+            "10. Compute ranking_score = absolute_delta × decline_percentage (decline weighted by significance).",
+            "11. Filter: min 50 September mentions, min 0.05% share, min 30% decline.",
+            "12. Consolidate duplicate lexical signals only when reciprocal post-level overlap is strong.",
+            "13. Recompute consolidated group metrics from unique post IDs to avoid double counting.",
+            "14. Mark generic or duplicate-looking signals for display quality without deleting them.",
         ],
+        "deduplication": {
+            "method": "exact_cleaned_content_sha1",
+            "rule": (
+                "For every cleaned-text hash with multiple matching rows, the earliest-published "
+                "row is kept as canonical. The other rows are flagged is_canonical=0 and excluded "
+                "from all rankings, counts, and channel breakdowns."
+            ),
+            "channel_attribution": (
+                "Each canonical post is attributed to its first observed channel — the channel "
+                "of the earliest copy of that cleaned-text hash. This is not the same as the "
+                "original source: the CSV has no forward metadata. A channel that only verbatim-"
+                "forwards content will not appear in topic channel breakdowns."
+            ),
+            "min_content_length_for_dedup": (
+                f"Posts with cleaned text shorter than {MIN_CONTENT_LENGTH_FOR_DEDUP} characters "
+                "are exempt from deduplication and remain distinct. These are typically stickers, "
+                "emoji-only posts, or 1–2 word reactions."
+            ),
+            "scope": (
+                "Both the metric numerator (posts mentioning a topic) and denominator (total posts "
+                "in month) use canonical posts only, so monthly_share is internally consistent."
+            ),
+        },
         "normalization": (
-            "Raw counts are misleading because September has 224K posts while December has 83K. "
-            "We normalize by computing each topic's share of monthly volume, making months comparable."
+            "Raw counts are misleading because September and December had very different post volumes. "
+            "We normalize by computing each topic's share of monthly canonical-post volume, making "
+            "months comparable."
         ),
         "filters_applied": {
             "alert_posts_excluded": (
@@ -252,8 +404,9 @@ def build_methodology() -> dict:
             "stopwords": "Common English words (the, is, and, ...) are removed.",
             "boilerplate_tokens": (
                 "UI/navigation tokens embedded in shared posts (reading, mobile, device, "
-                "click, subscribe, ...) are removed because they reflect post formatting, "
-                "not subject matter."
+                "click, subscribe, ...) and social-footer platform names (tiktok, instagram, "
+                "facebook, ...) are removed because they reflect post formatting or 'follow us' "
+                "footer text, not subject matter."
             ),
             "junk_tokens": "Long alphanumeric strings that look like URL fragments or hashes are removed.",
         },
@@ -273,8 +426,8 @@ def build_methodology() -> dict:
                 "post volumes. One-directional containment is not enough."
             ),
             "double_counting": (
-                "Merged groups use the union of matched post IDs per month and channel. Counts are "
-                "never summed across member signals."
+                "Merged groups use the union of matched canonical post IDs per month and channel. "
+                "Counts are never summed across member signals."
             ),
         },
         "display_quality": {
@@ -289,10 +442,17 @@ def build_methodology() -> dict:
             ),
         },
         "limitations": [
+            "The metric measures deduplicated topic signals across observed Telegram posts, not unique original discourse — the CSV has no forward metadata, so we cannot identify the true original source of a message.",
             "N-gram matching is lexical, not semantic — different phrasings of the same concept are counted separately.",
-            "Consolidation is conservative — some near-duplicates may remain separate if overlap evidence is not strong enough.",
-            "Translation quality affects accuracy — the source data is machine-translated.",
-            "No deduplication of cross-posted content across channels.",
+            "Deduplication is exact-match on cleaned text — paraphrased or partially-edited copies are not collapsed (near-duplicate detection is future work).",
+            "Source content is machine-translated Hebrew → English; we can audit lexical consistency of the English output but cannot validate translation accuracy without the Hebrew source.",
+            "Channel attribution after dedup reflects the first observed channel for a cleaned-text hash, not the actual original publisher.",
+            "Consolidation is conservative — some near-duplicate phrasings may remain separate if post-level overlap evidence is not strong enough.",
+        ],
+        "future_work": [
+            "Near-duplicate detection (MinHash / SimHash) to collapse paraphrased forwards.",
+            "Hebrew-native processing on source text to avoid translation drift.",
+            "Semantic / embedding-based topic grouping to survive lexical variance.",
         ],
     }
 
@@ -342,9 +502,24 @@ def main():
     conn = sqlite3.connect(":memory:")
     create_db_schema(conn)
     row_count = ingest_to_sqlite(args.csv, conn)
-    print(f"  [{time.time()-t0:.1f}s] Loaded {row_count:,} posts into SQLite")
+    print(f"  [{time.time()-t0:.1f}s] Loaded {row_count:,} observed posts into SQLite")
 
-    # Step 2: Extract n-grams per month
+    # Step 1b: Mark canonical posts (exact-cleaned-content dedup).
+    t_dedup = time.time()
+    dedup_stats = mark_canonical_posts(conn)
+    print(
+        f"  [{time.time()-t_dedup:.1f}s] Deduplicated by exact cleaned-content hash: "
+        f"{dedup_stats['canonical_rows']:,} canonical / "
+        f"{dedup_stats['observed_rows']:,} observed "
+        f"({dedup_stats['duplicate_rows_collapsed']:,} duplicate rows collapsed; "
+        f"{dedup_stats['short_rows_exempt_from_dedup']:,} short rows exempt)"
+    )
+    print(
+        f"  Duplicate hashes: {dedup_stats['duplicate_hashes']:,} "
+        f"(of which {dedup_stats['cross_channel_duplicate_hashes']:,} span multiple channels)"
+    )
+
+    # Step 2: Extract n-grams per month from canonical posts only
     t1 = time.time()
     monthly_ngram_counts, monthly_totals, channel_ngram_counts, channel_monthly_totals = (
         compute_monthly_ngrams(conn)
@@ -395,16 +570,45 @@ def main():
     print(f"  [{time.time()-t5:.1f}s] Computed channel breakdown")
 
     # Step 7: Build artifacts
+    observed_channels = conn.execute(
+        "SELECT COUNT(DISTINCT source_name) FROM posts"
+    ).fetchone()[0]
+    canonical_channels = conn.execute(
+        "SELECT COUNT(DISTINCT source_name) FROM posts WHERE is_canonical = 1"
+    ).fetchone()[0]
+    observed_monthly_volumes = {
+        row[0]: row[1]
+        for row in conn.execute("SELECT month, COUNT(*) FROM posts GROUP BY month")
+    }
+
     overview = {
-        "total_posts": row_count,
-        "channels": len(set(
-            row[0] for row in conn.execute("SELECT DISTINCT source_name FROM posts")
-        )),
+        # `total_posts` and `channels` are the headline UI numbers and now
+        # reflect the deduplicated canonical view that the metric ranks against.
+        "total_posts": dedup_stats["canonical_rows"],
+        "channels": canonical_channels,
+        # Observed counts are kept alongside for transparency.
+        "observed_posts": dedup_stats["observed_rows"],
+        "observed_channels": observed_channels,
+        "deduplication": {
+            "method": "exact_cleaned_content_sha1",
+            "min_content_length_for_dedup": MIN_CONTENT_LENGTH_FOR_DEDUP,
+            "duplicate_rows_collapsed": dedup_stats["duplicate_rows_collapsed"],
+            "short_rows_exempt_from_dedup": dedup_stats["short_rows_exempt_from_dedup"],
+            "duplicate_hashes": dedup_stats["duplicate_hashes"],
+            "cross_channel_duplicate_hashes": dedup_stats["cross_channel_duplicate_hashes"],
+            "channel_attribution_rule": (
+                "Each canonical post is attributed to the first observed channel "
+                "(earliest published_at among rows sharing a cleaned-content hash). "
+                "This is NOT a claim about the original source — the CSV contains no "
+                "forward metadata."
+            ),
+        },
         "date_range": {
             "start": conn.execute("SELECT MIN(published_at) FROM posts").fetchone()[0],
             "end": conn.execute("SELECT MAX(published_at) FROM posts").fetchone()[0],
         },
         "monthly_volumes": dict(sorted(monthly_totals.items())),
+        "observed_monthly_volumes": dict(sorted(observed_monthly_volumes.items())),
         "declining_trends_found": len(scores),
         "top_trends_included": len(top_scores),
         "consolidated_trends_included": len(consolidated_trends),

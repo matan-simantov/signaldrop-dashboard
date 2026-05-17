@@ -86,6 +86,7 @@ def build_topic_post_index(conn, candidate_topics: Iterable[str]) -> TopicPostIn
         """
         SELECT id, published_at, month, content, source_name
         FROM posts
+        WHERE is_canonical = 1
         """
     )
     for post_id, published_at, month, content, channel in cursor:

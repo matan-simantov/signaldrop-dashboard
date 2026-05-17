@@ -6,8 +6,24 @@ interface Props {
 }
 
 export function OverviewCards({ data }: Props) {
+  const observed = data.observed_posts ?? data.total_posts;
+  const canonical = data.total_posts;
+  const showDedup = data.observed_posts !== undefined && data.observed_posts !== canonical;
+
+  const postsValue = showDedup
+    ? `${canonical.toLocaleString()}`
+    : canonical.toLocaleString();
+  const postsCaption = showDedup
+    ? `unique cleaned text · ${observed.toLocaleString()} observed`
+    : undefined;
+
   const cards = [
-    { label: 'Total Posts', value: data.total_posts.toLocaleString(), icon: Hash },
+    {
+      label: 'Posts (deduplicated)',
+      value: postsValue,
+      caption: postsCaption,
+      icon: Hash,
+    },
     { label: 'Channels', value: data.channels.toLocaleString(), icon: Radio },
     { label: 'Date Range', value: 'Sep–Dec 2025', icon: Calendar },
     {
@@ -19,7 +35,7 @@ export function OverviewCards({ data }: Props) {
 
   return (
     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-      {cards.map(({ label, value, icon: Icon }) => (
+      {cards.map(({ label, value, caption, icon: Icon }) => (
         <div
           key={label}
           className="rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-800/60"
@@ -31,6 +47,11 @@ export function OverviewCards({ data }: Props) {
           <div className="mt-2 text-2xl font-semibold text-slate-900 dark:text-slate-50">
             {value}
           </div>
+          {caption && (
+            <div className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+              {caption}
+            </div>
+          )}
         </div>
       ))}
     </div>

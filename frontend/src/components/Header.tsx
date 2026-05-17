@@ -11,9 +11,9 @@ interface Props {
 
 const COPY: Record<Variant, string> = {
   home:
-    'Analyze public conversation datasets and surface topics whose share of attention is declining over time.',
+    'Analyze public conversation datasets and detect topic signals whose normalized share of observed posts is declining over time.',
   telegram:
-    'Public Telegram channels, September–December 2025. Topics ranked by deterministic share-of-conversation decline.',
+    'Observed public Telegram posts, September–December 2025. Topic signals ranked by normalized decline in share of unique deduplicated cleaned-text posts.',
 };
 
 export function Header({ theme, onToggleTheme, variant = 'home' }: Props) {

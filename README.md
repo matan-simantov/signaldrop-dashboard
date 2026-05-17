@@ -1,12 +1,22 @@
 # SignalDrop
 
-SignalDrop is a social-intelligence system that analyzes public conversation datasets and surfaces topics whose **share of attention is declining over time**.
+SignalDrop is a social-intelligence system that analyzes public conversation datasets and detects **topic signals whose normalized share of unique deduplicated cleaned-text posts is declining over time**.
 
-The pipeline is loader-based: any public text source (Telegram, Facebook, Reddit, etc.) can be plugged in via a `BaseLoader` that maps source-specific rows into a normalized post schema. The rest of the pipeline — text cleaning, n-gram extraction, normalized share scoring, deterministic consolidation, display-quality filtering — runs unchanged across sources.
+**Live demo**
+- Frontend (Amplify): https://main.d1uef6okxdq4dd.amplifyapp.com
+- Backend API (ECS): https://si-3819fa673ce6443abb683b4652a4105a.ecs.eu-west-2.on.aws/api
 
-The currently shipped dataset is **public Telegram channels** (~694K posts, 366 channels, September–December 2025). The dashboard opens on a generic home screen with dataset cards; clicking the Telegram card opens its analysis workspace. Future loaders (Facebook, other public text sources) appear as disabled cards.
+The pipeline is loader-based: any public text source (Telegram, Facebook, Reddit, etc.) can be plugged in via a `BaseLoader` that maps source-specific rows into a normalized post schema. The rest of the pipeline — text cleaning, exact-content deduplication, n-gram extraction, normalized share scoring, deterministic consolidation, display-quality filtering — runs unchanged across sources.
 
-**Core principle:** all counts, shares, rankings, and topic groupings are deterministic. AI (Anthropic) is optional and local-only — it produces human-readable labels and a short Key Findings summary from already-computed deterministic outputs. AI never calculates rankings, counts, shares, decline metrics, or topic groups.
+The currently shipped dataset is **public Telegram channels**: 693,989 observed posts, of which **593,094 are unique cleaned-text canonical posts** after exact-content deduplication; 366 channels; September–December 2025. The dashboard opens on a generic home screen with dataset cards; clicking the Telegram card opens its analysis workspace. Future loaders (Facebook, other public text sources) appear as disabled cards.
+
+**Core principle:** all counts, shares, rankings, deduplication, and topic groupings are deterministic. AI (Anthropic) is optional and local-only — it produces human-readable labels and a short Key Findings summary from already-computed deterministic outputs. AI never calculates rankings, counts, shares, decline metrics, deduplication, or topic groups.
+
+## Metric definition
+
+> **Ranking score = September-to-December decline in share of unique deduplicated cleaned-text posts, weighted by September topic share.**
+
+Two posts are considered duplicates when their cleaned content (lowercased, URL-stripped, punctuation-stripped, whitespace-collapsed) is byte-identical. For every duplicate group only the earliest-published row survives as the *canonical* post; the others are excluded from every count, share, ranking, and channel breakdown. The dataset is **observed Telegram posts** — channel attribution after dedup reflects the *first observed channel* for a cleaned-text hash, not the original source (the CSV has no forward metadata).
 
 ## Architecture Overview
 
@@ -137,15 +147,39 @@ make ai-insights
 
 ## Trend Detection Methodology
 
+### Deduplication (exact cleaned-content)
+
+The CSV contains 693,989 observed rows. Many are verbatim copies of the same message forwarded across channels (e.g. identical IDF spokesperson press releases, channel ad copypasta, LLM error messages). Counting each row as independent evidence would let amplification dominate the rankings.
+
+Before any trend calculation:
+
+1. `clean_text(content)` = lowercased + URLs stripped + punctuation removed + whitespace collapsed.
+2. SHA-1 over the cleaned text.
+3. For every hash with multiple matching rows, keep one **canonical** row (earliest `published_at`, lexicographic tie-break on `id`). Other rows are flagged `is_canonical=0` and excluded from every downstream count, share, ranking, and channel breakdown.
+4. Posts whose cleaned text is shorter than `MIN_CONTENT_LENGTH_FOR_DEDUP = 20` characters are **exempt** from dedup and remain distinct (typically stickers, emoji-only, 1–2 word reactions).
+
+**Channel attribution after dedup** is the channel of the canonical row — the *first observed channel* for that cleaned-text hash. This is **not** a claim about the true original source: the CSV has no `forward_from` metadata, so we cannot identify the actual publisher. A channel that only verbatim-forwards content will not appear in any topic's channel breakdown.
+
+For this dataset:
+
+| Field | Value |
+|---|---|
+| Observed posts | 693,989 |
+| Canonical posts (after dedup) | 593,094 |
+| Duplicate rows collapsed | 100,895 |
+| Duplicate cleaned-text hashes | 68,644 |
+| of which span ≥2 channels | 63,753 |
+| Short rows exempt from dedup | 25 |
+
 ### Normalization
 
-September has 224K posts while December has 83K. Raw counts are misleading.
+September has 189,526 canonical posts; December has 74,242. Raw counts across months are not comparable.
 
-We compute **monthly share** = posts mentioning topic / total posts in month. This makes months comparable regardless of volume.
+**monthly_share = canonical posts mentioning topic ÷ total canonical posts in month.** Both numerator and denominator use the canonical (deduplicated) set, so the ratio is internally consistent.
 
 ### Ranking
 
-> **Trends are ranked by normalized September-to-December decline, weighted by September topic share to avoid over-ranking tiny low-volume topics.**
+> **Topic signals are ranked by normalized September-to-December decline in share of unique deduplicated cleaned-text posts, weighted by September topic share.**
 
 ```
 decline_percentage = (sep_share - dec_share) / sep_share
@@ -186,8 +220,33 @@ Genericness is conservative and is not the same as being a unigram. Clear topics
 - Minimum 0.05% September share
 - Minimum 30% decline
 - **Home Front Command alert posts excluded** — long, comma-separated location lists from rocket-alert templates, not topical content.
-- **UI boilerplate tokens removed** — words like `reading`, `mobile`, `device`, `subscribe` appear in navigation text embedded in shared posts.
+- **UI / social-footer boilerplate tokens removed** — `reading`, `mobile`, `device`, `subscribe`, plus platform-footer names `tiktok`, `instagram`, `facebook`, `youtube`, `twitter`, `whatsapp` (these overwhelmingly appear in "follow us on…" footer text, not as topical content).
 - **Junk tokens removed** — long alphanumeric strings that look like URL fragments or hashes.
+
+## Tradeoffs and Limitations
+
+The metric measures **deduplicated topic signals across observed Telegram posts**, not unique original discourse. We are honest about what this dataset and pipeline can and cannot tell us.
+
+**What we measure**
+- The share of unique cleaned-text posts mentioning each topic, per month, normalized for monthly volume.
+- Exact verbatim copies of a message are collapsed to one canonical post, so cross-channel forwards do not inflate a topic.
+- Topic consolidation merges lexical variants (e.g. `kirk` / `charlie` / `charlie kirk`) only when post-level overlap is strong and reciprocal.
+
+**What we deliberately do not claim**
+- We do not identify the original source of a message. The CSV has no `forward_from` metadata; channel attribution after dedup reflects the *first observed channel* for a cleaned-text hash, not the actual publisher.
+- We do not claim definitive public opinion, real-world discourse, or true conversation trends — only patterns in observed posts.
+- We do not validate translation accuracy. Source posts are machine-translated Hebrew → English; we can only audit the consistency of the English output.
+
+**Known limitations**
+- Exact-content dedup will not collapse near-duplicates (paraphrases, partial edits, "FW:" prefixes).
+- N-gram matching is lexical, not semantic — translation variance can split one real topic into multiple English signals.
+- Consolidation is conservative — some near-duplicate phrasings may remain separate if reciprocal post-level overlap is not strong enough.
+- Display-quality filtering hides weak standalone terms (e.g. `city`, `september`, `platforms`) from the main list but keeps them in `consolidated_trends.json` for auditability.
+
+**Future work (not implemented for this submission)**
+- Near-duplicate detection (MinHash / SimHash) to collapse paraphrased forwards.
+- Hebrew-native processing on source text to avoid translation drift.
+- Semantic / embedding-based topic grouping to survive lexical variance.
 
 ## AWS Deployment
 
