@@ -213,7 +213,7 @@ function App() {
         )}
 
         <footer className="text-center text-xs text-slate-400 dark:text-slate-500 py-6 border-t border-slate-200 dark:border-slate-800">
-          SignalDrop · public conversation trend analysis
+          SignalDrop · deduplicated Telegram topic-signal analysis
         </footer>
       </div>
     </div>

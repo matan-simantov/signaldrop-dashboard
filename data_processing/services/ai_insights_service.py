@@ -33,13 +33,16 @@ Strict rules:
 - Use only the deterministic facts provided by the user.
 - Do not invent facts, causes, events, implications, or metrics.
 - Do not calculate or derive new counts, shares, percentages, rankings, or decline metrics.
-- If you mention rank, say "ranked by deterministic scoring" rather than "ranked by share decline".
+- When stating a decline percentage, phrase it as "declined N% in normalized post share" or "lost N% of normalized share". Never say "declined N% by deterministic scoring" — the % is a share decline, not the ranking score itself.
+- "Deterministic" should only appear when describing HOW the ranking is computed, not next to a decline %.
+- If you mention rank, say "ranked deterministically" or similar.
 - If you include a number, copy it exactly from the supplied facts.
 - Do not decide topic grouping or scoring.
 - Use neutral, conservative language. Avoid the phrases "true discourse", "real-world decline", "original source", "definitive opinion".
-- Prefer the phrases "observed Telegram posts", "deduplicated topic signals", "canonical posts" when natural.
+- Prefer the phrases "observed Telegram posts", "deduplicated topic signals", "canonical posts", "normalized post share" when natural.
 - Focus only on declining topic signals across observed Telegram posts.
 - Each "detail" string MUST be a single sentence of at most 18 words. Be terse; cut filler words.
+- For the consolidation theme, frame it as a USER finding ("overlapping lexical signals were merged into single topic groups without double-counting any post") — NOT as an implementation note about post IDs or hidden-display counts.
 - Prefer executive-summary themes over listing individual ranks."""
 
 
@@ -104,11 +107,12 @@ def build_insights_prompt(trends: list[dict], labels: dict[str, dict[str, str]])
     prompt = (
         "Write one short headline and exactly three executive-summary key findings from these deterministic facts. "
         "Use the supplied labels when helpful. Do not add numbers unless copied exactly. "
-        "If you mention rank, describe it as deterministic scoring, not as share decline alone. "
+        "When stating a decline %, say 'declined N% in normalized post share' — never 'declined N% by deterministic scoring'. "
         "Each finding 'detail' MUST be a single sentence and at most 18 words — be terse, cut adjectives. "
-        "Aim for these themes if supported by the facts: event-driven topics faded fastest; "
-        "broad conflict topics declined less sharply but remained central; deduplication and consolidation "
-        "reduced amplification and duplicate lexical signals without changing deterministic metrics.\n\n"
+        "Aim for these themes if supported by the facts: "
+        "(a) event-driven topics faded fastest; "
+        "(b) broad conflict topics declined less sharply but remained central; "
+        "(c) overlapping lexical signals were merged into single topic groups without double-counting any post (frame as a user-facing finding, NOT as an implementation note about IDs or hidden-display counts).\n\n"
         f"{json.dumps(payload, ensure_ascii=False, indent=2)}"
     )
     allowed_numbers = set(NUMBER_PATTERN.findall(prompt))

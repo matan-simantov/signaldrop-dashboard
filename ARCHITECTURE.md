@@ -22,9 +22,11 @@
 Raw CSV posts
   → source loader maps rows to NormalizedPost
   → SQLite in-memory posts table
-  → clean/tokenize translated text
-  → extract unigram + bigram lexical signals
-  → compute normalized monthly shares
+  → clean text + SHA-1 cleaned-content hash
+  → mark canonical posts (exact-content dedup, earliest published_at wins)
+  → all downstream steps read canonical posts only
+  → tokenize + extract unigram + bigram lexical signals
+  → compute normalized monthly shares (canonical numerator + denominator)
   → rank deterministic declining signals
   → consolidate duplicate signals using reciprocal post-level overlap
   → mark generic or duplicate-looking signals for display quality
@@ -33,6 +35,19 @@ Raw CSV posts
   → FastAPI serves precomputed artifacts
   → React dashboard visualizes consolidated trends
 ```
+
+### Exact-Content Deduplication
+
+The ranking metric is *share of unique deduplicated cleaned-text posts*. Cross-channel forwards and copypasta would otherwise let amplification dominate the leaderboard.
+
+At ingest, the pipeline:
+1. Computes `clean_text(content)` for every observed post.
+2. SHA-1 hashes it. Posts with cleaned length below `MIN_CONTENT_LENGTH_FOR_DEDUP = 20` get a NULL hash and stay distinct (typically stickers, emoji-only, 1–2 word reactions).
+3. For each hash with multiple rows, keeps the row with the earliest `published_at` (lexicographic tie-break on `id`) as the *canonical* post and flags the rest `is_canonical=0`.
+
+All downstream stages (`compute_monthly_ngrams`, `find_representative_posts`, `build_topic_post_index`) query `WHERE is_canonical = 1`. The metric's numerator and denominator both use canonical posts, so the ratio is internally consistent.
+
+Channel attribution after dedup reflects the **first observed channel** for a cleaned-text hash, not the original source — the CSV has no `forward_from` metadata.
 
 ### Topic Consolidation
 
@@ -198,6 +213,8 @@ The pipeline's modularity means new infographic types don't require rewriting ex
 
 | Decision | Tradeoff |
 |----------|----------|
+| Exact-cleaned-content dedup | Collapses verbatim cross-channel forwards (100,895 rows on this dataset) and removes amplification bias; does not collapse paraphrased near-duplicates |
+| First-observed channel as canonical attribution | Deterministic and explainable; not the same as the original source — the CSV has no `forward_from` metadata |
 | N-grams over embeddings | Explainable and fast, but misses semantic similarity |
 | Conservative post-overlap consolidation | Reduces duplicates, but intentionally leaves uncertain near-duplicates separate |
 | Precomputed artifacts | Instant API responses, but requires re-running pipeline for updates |

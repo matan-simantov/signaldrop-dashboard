@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Optional
 
 
-SYSTEM_PROMPT = """You are an analyst labeling declining conversation trends from public Telegram channels covering Israeli news and politics, September–December 2025.
+SYSTEM_PROMPT = """You are an analyst labeling declining topic signals detected across observed public Telegram posts covering Israeli news and politics, September–December 2025.
 
 For each trend keyword, output a JSON object with:
   - "short_label": a very short, neutral headline, 3 to 6 words, suitable for a dashboard list. Examples of the desired tone: "Gaza War Coverage", "Qatar–Hamas Coverage", "Hostage Release Talks", "Yemen Missile Threats", "Charlie Kirk Coverage". No trailing punctuation.

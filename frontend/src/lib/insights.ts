@@ -28,7 +28,7 @@ export function deriveKeyFindings(trends: Trend[], aiLabels: AiLabels): Insight[
     detail:
       `${resolveTrendLabel(sharpest, aiLabels)} nearly disappeared by December, ` +
       `dropping from ${(sharpest.sep_share * 100).toFixed(2)}% to ` +
-      `${(sharpest.dec_share * 100).toFixed(2)}% of monthly conversation. ` +
+      `${(sharpest.dec_share * 100).toFixed(2)}% of canonical posts. ` +
       `This is the sharpest relative drop in the ranking — not necessarily the most central topic overall.`,
   });
 
@@ -56,7 +56,7 @@ export function deriveKeyFindings(trends: Trend[], aiLabels: AiLabels): Insight[
     value: `−${pts} percentage points`,
     detail:
       `${resolveTrendLabel(largestShareDrop, aiLabels)} lost ${pts} percentage points ` +
-      `of monthly conversation share between September and December — the largest absolute drop ` +
+      `of canonical-post share between September and December — the largest absolute drop ` +
       `among ranked topics.`,
   });
 

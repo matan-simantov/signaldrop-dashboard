@@ -12,7 +12,7 @@ export function HomeScreen({ onOpenTelegram }: Props) {
           Datasets
         </h2>
         <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
-          Select a public conversation dataset to open its analysis workspace. Each workspace
+          Select a public text dataset to open its analysis workspace. Each workspace
           detects topic signals whose normalized share of observed posts is declining over time,
           using deterministic metrics over deduplicated cleaned-text posts. AI is used only for
           readable labels and summaries — never for ranking, counts, or grouping.

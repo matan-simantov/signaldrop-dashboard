@@ -88,7 +88,7 @@ export function TrendDetail({ data, aiLabel, onClose }: Props) {
             Raw mentions fell from {trend.sep_mentions.toLocaleString()} to{' '}
             {trend.dec_mentions.toLocaleString()}, while normalized share declined from{' '}
             {(trend.sep_share * 100).toFixed(2)}% to {(trend.dec_share * 100).toFixed(2)}% — a{' '}
-            {declinePct}% relative drop in share of monthly conversation.
+            {declinePct}% relative drop in share of monthly canonical posts.
           </p>
         </div>
         <button

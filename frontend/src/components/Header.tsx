@@ -11,7 +11,7 @@ interface Props {
 
 const COPY: Record<Variant, string> = {
   home:
-    'Analyze public conversation datasets and detect topic signals whose normalized share of observed posts is declining over time.',
+    'Analyze public text datasets and detect topic signals whose normalized share of observed posts is declining over time.',
   telegram:
     'Observed public Telegram posts, September–December 2025. Topic signals ranked by normalized decline in share of unique deduplicated cleaned-text posts.',
 };

@@ -28,7 +28,7 @@ export function VolumeChart({ volumes }: Props) {
       </h2>
       <p className="mt-1 text-sm text-slate-600 dark:text-slate-400 max-w-3xl">
         Posting volume dropped sharply by December, so trends are ranked by share of monthly
-        conversation rather than raw mention counts.
+        canonical posts rather than raw mention counts.
       </p>
       <div className="mt-4">
         <ResponsiveContainer width="100%" height={200}>
