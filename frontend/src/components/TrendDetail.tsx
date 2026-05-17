@@ -4,6 +4,7 @@ import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from 'recharts';
 import type { TrendDetail as TrendDetailType, AiLabel } from '../types';
+import { InfoTooltip } from './InfoTooltip';
 
 interface Props {
   data: TrendDetailType;
@@ -154,13 +155,18 @@ export function TrendDetail({ data, aiLabel, onClose }: Props) {
       {channelRows.length > 0 && (
         <div>
           <div className="mb-3">
-            <h3 className="text-sm font-medium text-slate-700 dark:text-slate-300">
-              Channel-level drops
-            </h3>
+            <div className="flex items-center gap-1.5">
+              <h3 className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                Channel-level drops
+              </h3>
+              <InfoTooltip
+                term="first observed channel"
+                text="Channel where this cleaned-text first appeared. Not the original source — the dataset has no forward metadata."
+              />
+            </div>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
               First-observed channels (after dedup) with at least 10 September mentions, sorted by
-              largest mention drop. Not a claim about the original source — the dataset has no
-              forward metadata.
+              largest mention drop.
             </p>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">

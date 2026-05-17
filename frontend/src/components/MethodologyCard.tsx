@@ -72,6 +72,35 @@ export function MethodologyCard({ data }: Props) {
         <div className="px-6 pb-6 pt-2 space-y-5 border-t border-slate-200 dark:border-slate-700">
           <div>
             <h3 className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-2">
+              Metrics &amp; dimensions
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm text-slate-600 dark:text-slate-300">
+              <div>
+                <div className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1">
+                  Metrics
+                </div>
+                <ul className="space-y-1 list-disc list-inside marker:text-slate-400">
+                  <li>Observed Telegram posts</li>
+                  <li>Canonical (unique deduplicated cleaned-text) posts</li>
+                  <li>Normalized monthly share (canonical mentions ÷ canonical posts in month)</li>
+                  <li>September → December decline (absolute and percentage)</li>
+                  <li>Ranking score = decline × September share</li>
+                </ul>
+              </div>
+              <div>
+                <div className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1">
+                  Dimensions
+                </div>
+                <ul className="space-y-1 list-disc list-inside marker:text-slate-400">
+                  <li>Month (Sep / Oct / Nov / Dec 2025)</li>
+                  <li>Topic / consolidated topic group</li>
+                  <li>First observed channel (after dedup)</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+          <div>
+            <h3 className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-2">
               Pipeline
             </h3>
             <ol className="space-y-2 text-sm text-slate-600 dark:text-slate-300 list-decimal list-inside marker:text-slate-400">

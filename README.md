@@ -18,6 +18,36 @@ The currently shipped dataset is **public Telegram channels**: 693,989 observed 
 
 Two posts are considered duplicates when their cleaned content (lowercased, URL-stripped, punctuation-stripped, whitespace-collapsed) is byte-identical. For every duplicate group only the earliest-published row survives as the *canonical* post; the others are excluded from every count, share, ranking, and channel breakdown. The dataset is **observed Telegram posts** — channel attribution after dedup reflects the *first observed channel* for a cleaned-text hash, not the original source (the CSV has no forward metadata).
 
+## Findings
+
+All numbers below are post-deduplication, computed deterministically by the pipeline. They are also visible in the dashboard's overview cards and per-trend detail panels.
+
+- **Conflict topics dominated September but cooled sharply.** Gaza was the largest topic in September (14.1% of canonical posts) and declined to 8.3% by December — a 41% normalized decline. Hamas followed the same pattern (10.4% → 5.7%, 45% decline).
+- **Hostage discourse declined more steeply than the broader conflict.** Hostages dropped 74% (9,320 → 934 canonical posts), and the narrower "release hostages" signal dropped 94% (2,274 → 57). This is the clearest signal that the operational-status conversation, not the war framing, faded fastest.
+- **Diplomacy nodes (Qatar, Doha) faded with hostage talks.** Qatar declined 77% (7,054 → 639) and Doha declined 84% (2,756 → 168), tracking the hostage-negotiation news cycle.
+- **One-off news events vanished as expected.** Charlie Kirk — consolidated from three lexical variants (`kirk`, `charlie`, `charlie kirk`) by reciprocal post-overlap evidence — declined 96% (2,719 → 43). Yemen / Houthi discourse declined 80% and 93% respectively.
+- **Cross-channel amplification was non-trivial.** 100,895 rows (14.5% of the dataset) were collapsed by exact cleaned-text dedup; 92% of duplicate groups spanned two or more channels. Without dedup, identical IDF press releases forwarded to 30+ channels would inflate those topics.
+- **Footer artifacts were genuine noise.** `tiktok`, `instagram`, `whatsapp` n-grams ranked high under naive token counting because of "follow us on…" footer text. They are filtered before scoring; real declining signals replaced them.
+
+## Metrics & Dimensions
+
+The dashboard and the JSON artifacts surface a fixed set of metrics across three dimensions.
+
+| Metric | Definition |
+|---|---|
+| **Observed posts** | Raw CSV rows after schema parsing (693,989). |
+| **Canonical posts** (unique deduplicated cleaned-text) | Rows that survive exact-cleaned-content dedup (593,094). The metric's denominator. |
+| **Monthly share** | Canonical mentions of a topic ÷ total canonical posts in that month. |
+| **September → December decline** | Absolute: `sep_share − dec_share`. Percentage: `(sep_share − dec_share) ÷ sep_share`. |
+| **Ranking score** | `absolute_delta × decline_percentage`. Weights decline by September topic share so tiny vanishing topics don't outrank real shifts. |
+| **Mentions** | Number of canonical posts containing the topic n-gram in a month. |
+
+| Dimension | Values |
+|---|---|
+| **Month** | 2025-09, 2025-10, 2025-11, 2025-12 |
+| **Topic / consolidated topic group** | Lexical n-gram or post-overlap-merged group (e.g. `kirk` + `charlie` + `charlie kirk`). |
+| **First observed channel** | Channel of the canonical (earliest-observed) row for a given cleaned-text hash. *Not* the original source — the CSV has no forward metadata. |
+
 ## Architecture Overview
 
 ```

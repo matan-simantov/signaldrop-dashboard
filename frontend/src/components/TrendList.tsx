@@ -1,6 +1,7 @@
 import { ChevronRight } from 'lucide-react';
 import type { Trend, AiLabels } from '../types';
 import { resolveTrendLabel } from '../lib/labels';
+import { InfoTooltip } from './InfoTooltip';
 
 interface Props {
   trends: Trend[];
@@ -35,12 +36,18 @@ export function TrendList({ trends, aiLabels, onSelect, selectedTopic }: Props) 
   return (
     <section className="rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800/60">
       <div className="p-5 md:p-6 border-b border-slate-200 dark:border-slate-700">
-        <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
-          Top declining trends
-        </h2>
+        <div className="flex items-center gap-1.5">
+          <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+            Top declining topic signals
+          </h2>
+          <InfoTooltip
+            term="ranking score"
+            text="Ranked by decline weighted by September topic share. Tiny topics that vanish entirely don't outrank large topics with real shifts."
+          />
+        </div>
         <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-          Ranked by normalized September-to-December decline, weighted by topic significance.
-          Click a row to inspect a trend.
+          Sorted by deterministic ranking score (decline × September share). Select any topic to
+          inspect its monthly share, channel-level drops, and example September posts below.
         </p>
       </div>
       <ol className="divide-y divide-slate-200 dark:divide-slate-700">
@@ -51,13 +58,20 @@ export function TrendList({ trends, aiLabels, onSelect, selectedTopic }: Props) 
           const declinePct = Math.round(t.decline_percentage * 100);
           const isSelected = t.topic === selectedTopic;
           return (
-            <li key={t.topic}>
+            <li key={t.topic} className="relative">
+              {isSelected && (
+                <span
+                  aria-hidden
+                  className="absolute inset-y-0 left-0 w-1 bg-indigo-500 dark:bg-indigo-400"
+                />
+              )}
               <button
                 type="button"
                 onClick={() => onSelect(t.topic)}
+                aria-pressed={isSelected}
                 className={`w-full text-left px-5 md:px-6 py-4 flex items-center gap-4 transition focus:outline-none focus:bg-slate-50 dark:focus:bg-slate-800 ${
                   isSelected
-                    ? 'bg-indigo-50/60 dark:bg-indigo-500/10'
+                    ? 'bg-indigo-50 dark:bg-indigo-500/15'
                     : 'hover:bg-slate-50 dark:hover:bg-slate-800/80'
                 }`}
               >
@@ -77,9 +91,18 @@ export function TrendList({ trends, aiLabels, onSelect, selectedTopic }: Props) 
                       </span>
                     )}
                   </div>
-                  <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                    Sep {(t.sep_share * 100).toFixed(2)}% → Dec {(t.dec_share * 100).toFixed(2)}%
-                    <span className="text-slate-400 dark:text-slate-500"> · signal: {signal}</span>
+                  <div className="mt-1 text-xs text-slate-500 dark:text-slate-400 inline-flex items-center gap-1 flex-wrap">
+                    <span>
+                      Sep {(t.sep_share * 100).toFixed(2)}% → Dec {(t.dec_share * 100).toFixed(2)}%
+                    </span>
+                    {idx === 0 && (
+                      <InfoTooltip
+                        term="monthly share"
+                        text="Topic mentions in this month ÷ total canonical (deduplicated) posts in this month."
+                        size={11}
+                      />
+                    )}
+                    <span className="text-slate-400 dark:text-slate-500">· signal: {signal}</span>
                   </div>
                 </div>
                 <div className="shrink-0 w-28 hidden sm:block">
@@ -94,8 +117,15 @@ export function TrendList({ trends, aiLabels, onSelect, selectedTopic }: Props) 
                   <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">
                     {declinePct}%
                   </div>
-                  <div className="text-[10px] uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                  <div className="text-[10px] uppercase tracking-wide text-slate-400 dark:text-slate-500 inline-flex items-center gap-0.5">
                     decline
+                    {idx === 0 && (
+                      <InfoTooltip
+                        term="decline percentage"
+                        text="(Sep share − Dec share) ÷ Sep share. Share of September attention lost by December."
+                        size={11}
+                      />
+                    )}
                   </div>
                 </div>
                 <ChevronRight size={16} className="text-slate-300 dark:text-slate-500 shrink-0" />

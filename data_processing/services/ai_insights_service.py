@@ -20,13 +20,13 @@ SYSTEM_PROMPT = """You summarize deterministic declining trend outputs for a sma
 
 Return ONLY valid JSON with:
 {
-  "headline": "short neutral headline, max 9 words",
+  "headline": "short neutral headline, max 8 words",
   "findings": [
-    {"title": "short label", "detail": "one concise neutral sentence"},
-    {"title": "short label", "detail": "one concise neutral sentence"},
-    {"title": "short label", "detail": "one concise neutral sentence"}
+    {"title": "short label, max 6 words", "detail": "one short factual sentence, MAX 18 words"},
+    {"title": "short label, max 6 words", "detail": "one short factual sentence, MAX 18 words"},
+    {"title": "short label, max 6 words", "detail": "one short factual sentence, MAX 18 words"}
   ],
-  "caveat": "optional short methodology note"
+  "caveat": "optional methodology note, max 20 words"
 }
 
 Strict rules:
@@ -36,8 +36,10 @@ Strict rules:
 - If you mention rank, say "ranked by deterministic scoring" rather than "ranked by share decline".
 - If you include a number, copy it exactly from the supplied facts.
 - Do not decide topic grouping or scoring.
-- Use neutral, conservative language.
-- Focus only on declining conversation trends.
+- Use neutral, conservative language. Avoid the phrases "true discourse", "real-world decline", "original source", "definitive opinion".
+- Prefer the phrases "observed Telegram posts", "deduplicated topic signals", "canonical posts" when natural.
+- Focus only on declining topic signals across observed Telegram posts.
+- Each "detail" string MUST be a single sentence of at most 18 words. Be terse; cut filler words.
 - Prefer executive-summary themes over listing individual ranks."""
 
 
@@ -103,9 +105,10 @@ def build_insights_prompt(trends: list[dict], labels: dict[str, dict[str, str]])
         "Write one short headline and exactly three executive-summary key findings from these deterministic facts. "
         "Use the supplied labels when helpful. Do not add numbers unless copied exactly. "
         "If you mention rank, describe it as deterministic scoring, not as share decline alone. "
+        "Each finding 'detail' MUST be a single sentence and at most 18 words — be terse, cut adjectives. "
         "Aim for these themes if supported by the facts: event-driven topics faded fastest; "
-        "broad conflict topics declined less sharply but remained central; consolidation reduced "
-        "duplicate lexical signals without changing deterministic metrics.\n\n"
+        "broad conflict topics declined less sharply but remained central; deduplication and consolidation "
+        "reduced amplification and duplicate lexical signals without changing deterministic metrics.\n\n"
         f"{json.dumps(payload, ensure_ascii=False, indent=2)}"
     )
     allowed_numbers = set(NUMBER_PATTERN.findall(prompt))
@@ -156,7 +159,15 @@ def generate_ai_insights(
         return None
 
     if not validate_ai_insights(insights, allowed_numbers):
-        print("[ai-insights] Validation failed. Falling back to deterministic key findings.")
+        # Surface which numeric tokens the LLM introduced that are not in the prompt.
+        offending = sorted(
+            set(NUMBER_PATTERN.findall(json.dumps(insights, ensure_ascii=False)))
+            - allowed_numbers
+        )
+        print(
+            "[ai-insights] Validation failed: output contains numbers not in the prompt: "
+            f"{offending}. Falling back to deterministic key findings."
+        )
         return None
     return insights
 
