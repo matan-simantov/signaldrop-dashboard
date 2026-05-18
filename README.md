@@ -8,12 +8,7 @@ The currently shipped dataset is **public Telegram channels**: 693,989 observed 
 
 ## Live demo
 
-- **Dashboard**: https://main.d1uef6okxdq4dd.amplifyapp.com
-
-Sample backend endpoints (FastAPI on AWS ECS):
-
-- Health check: https://si-3819fa673ce6443abb683b4652a4105a.ecs.eu-west-2.on.aws/health
-- Sample API: https://si-3819fa673ce6443abb683b4652a4105a.ecs.eu-west-2.on.aws/api/overview
+**Dashboard**: https://main.d1uef6okxdq4dd.amplifyapp.com
 
 ## Metric definition
 
