@@ -91,10 +91,19 @@ export function TrendList({ trends, aiLabels, onSelect, selectedTopic }: Props) 
                       </span>
                     )}
                   </div>
-                  <div className="mt-1 text-xs text-slate-500 dark:text-slate-400 inline-flex items-center gap-1 flex-wrap">
-                    <span>
-                      Sep {(t.sep_share * 100).toFixed(2)}% → Dec {(t.dec_share * 100).toFixed(2)}%
-                    </span>
+                  <div className="mt-1 text-xs text-slate-500 dark:text-slate-400 truncate">
+                    signal: {signal}
+                  </div>
+                </div>
+                <div className="shrink-0 w-24 text-right hidden sm:block">
+                  <div className="text-xs tabular-nums text-slate-700 dark:text-slate-200 leading-tight">
+                    Sep {(t.sep_share * 100).toFixed(2)}%
+                  </div>
+                  <div className="text-xs tabular-nums text-slate-500 dark:text-slate-400 leading-tight">
+                    Dec {(t.dec_share * 100).toFixed(2)}%
+                  </div>
+                  <div className="mt-0.5 text-[10px] uppercase tracking-wide text-slate-400 dark:text-slate-500 inline-flex items-center gap-0.5">
+                    share
                     {idx === 0 && (
                       <InfoTooltip
                         term="monthly share"
@@ -102,27 +111,18 @@ export function TrendList({ trends, aiLabels, onSelect, selectedTopic }: Props) 
                         size={11}
                       />
                     )}
-                    <span className="text-slate-400 dark:text-slate-500">· signal: {signal}</span>
                   </div>
                 </div>
-                <div className="shrink-0 w-28 hidden sm:block">
-                  <div className="h-1.5 rounded-full bg-slate-100 dark:bg-slate-700 overflow-hidden">
-                    <div
-                      className="h-full bg-indigo-500 dark:bg-indigo-400"
-                      style={{ width: `${Math.min(100, declinePct)}%` }}
-                    />
-                  </div>
-                </div>
-                <div className="shrink-0 w-16 text-right hidden md:block">
-                  <div className="text-sm font-semibold tabular-nums text-slate-900 dark:text-slate-100">
+                <div className="shrink-0 w-20 text-right hidden sm:block">
+                  <div className="text-lg font-bold tabular-nums text-indigo-600 dark:text-indigo-300 leading-none">
                     {Math.round(t.ranking_score * 10000).toLocaleString()}
                   </div>
-                  <div className="text-[10px] uppercase tracking-wide text-slate-400 dark:text-slate-500 inline-flex items-center gap-0.5">
+                  <div className="mt-1 text-[10px] uppercase tracking-wide font-medium text-indigo-500/80 dark:text-indigo-300/80 inline-flex items-center gap-0.5">
                     score
                     {idx === 0 && (
                       <InfoTooltip
                         term="ranking score"
-                        text="absolute_delta × decline_percentage, scaled ×10,000. Normalized Sep→Dec decline weighted by September topic share — tiny topics that vanish entirely don't outrank real shifts."
+                        text="absolute_delta × decline_percentage, scaled ×10,000. Normalized Sep→Dec decline weighted by September topic share — table is sorted by this value."
                         size={11}
                       />
                     )}
