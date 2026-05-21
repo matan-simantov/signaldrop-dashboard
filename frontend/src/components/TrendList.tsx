@@ -113,8 +113,23 @@ export function TrendList({ trends, aiLabels, onSelect, selectedTopic }: Props) 
                     />
                   </div>
                 </div>
+                <div className="shrink-0 w-16 text-right hidden md:block">
+                  <div className="text-sm font-semibold tabular-nums text-slate-900 dark:text-slate-100">
+                    {Math.round(t.ranking_score * 10000).toLocaleString()}
+                  </div>
+                  <div className="text-[10px] uppercase tracking-wide text-slate-400 dark:text-slate-500 inline-flex items-center gap-0.5">
+                    score
+                    {idx === 0 && (
+                      <InfoTooltip
+                        term="ranking score"
+                        text="absolute_delta × decline_percentage, scaled ×10,000. Normalized Sep→Dec decline weighted by September topic share — tiny topics that vanish entirely don't outrank real shifts."
+                        size={11}
+                      />
+                    )}
+                  </div>
+                </div>
                 <div className="shrink-0 w-16 text-right">
-                  <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                  <div className="text-sm font-semibold tabular-nums text-slate-900 dark:text-slate-100">
                     {declinePct}%
                   </div>
                   <div className="text-[10px] uppercase tracking-wide text-slate-400 dark:text-slate-500 inline-flex items-center gap-0.5">
